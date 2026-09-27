@@ -1,0 +1,11 @@
+name = "maestro-school-attendance-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "maestro-school-attendance-db"
+database_id = "REPLACE_WITH_NEW_D1_DATABASE_ID"
+
+[vars]
+FRONTEND_ORIGIN = "http://localhost:5173"

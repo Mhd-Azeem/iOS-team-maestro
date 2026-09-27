@@ -1,0 +1,1 @@
+<resources><style name="Theme.SchoolAttendance" parent="Theme.MaterialComponents.DayNight.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:statusBarColor">#008759</item><item name="android:navigationBarColor">#FFFFFF</item></style></resources>
