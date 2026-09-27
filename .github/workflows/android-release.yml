@@ -6,6 +6,7 @@ on:
       - "claude/team-maestro-exam-ios-yc6u56"
     paths:
       - "android/**"
+      - "web/**"
       - ".github/workflows/android-release.yml"
   workflow_dispatch:
 
@@ -18,6 +19,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build and bundle web app
+        working-directory: web
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          rm -rf ../android/app/src/main/assets/web
+          mkdir -p ../android/app/src/main/assets/web
+          cp -R dist/. ../android/app/src/main/assets/web/
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -26,6 +40,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+
+      - name: Generate Gradle wrapper
+        working-directory: android
+        run: gradle wrapper
+
+      - name: Compile Android release
+        working-directory: android
+        run: ./gradlew assembleRelease
 
       - name: Verify permanent signing secrets
         env:
@@ -40,10 +62,6 @@ jobs:
             exit 1
           fi
 
-      - name: Generate Gradle wrapper
-        working-directory: android
-        run: gradle wrapper
-
       - name: Restore permanent keystore
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -56,7 +74,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew clean assembleRelease
 
       - name: Read app version
         id: version
