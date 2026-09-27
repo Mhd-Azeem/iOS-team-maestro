@@ -1,7 +1,7 @@
 export interface Env { DB:D1Database; FRONTEND_ORIGIN:string }
 type Auth={userId:number;schoolId:number;role:string;fullName:string;username:string};
 const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8",...headers}});
-const cors=(env:Env,req:Request)=>{const origin=req.headers.get("origin")||"";const allowed=new Set([env.FRONTEND_ORIGIN,"http://localhost:5173","https://mhd-azeem.github.io","https://appassets.androidplatform.net"]);const allow=allowed.has(origin)?origin:(env.FRONTEND_ORIGIN||"http://localhost:5173");return {"access-control-allow-origin":allow,"vary":"Origin","access-control-allow-headers":"Authorization, Content-Type","access-control-allow-methods":"GET,POST,PUT,PATCH,DELETE,OPTIONS"};};
+const cors=(env:Env,req:Request)=>{const origin=req.headers.get("origin")||"";const allowed=new Set([env.FRONTEND_ORIGIN,"http://localhost:5173","https://mhd-azeem.github.io","https://appassets.androidplatform.net"]);const allow=allowed.has(origin)?origin:"*";return {"access-control-allow-origin":allow,"vary":"Origin","access-control-allow-headers":"Authorization, Content-Type","access-control-allow-methods":"GET,POST,PUT,PATCH,DELETE,OPTIONS"};};
 const fail=(m:string,s=400,h:HeadersInit={})=>json({error:m},s,h);
 const hex=(a:Uint8Array)=>[...a].map(b=>b.toString(16).padStart(2,"0")).join("");
 async function sha256(v:string){return hex(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v))))}
