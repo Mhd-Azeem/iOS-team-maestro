@@ -1,7 +1,7 @@
 export interface Env { DB:D1Database; FRONTEND_ORIGIN:string }
 type Auth={userId:number;schoolId:number;role:string;fullName:string;username:string};
 const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8",...headers}});
-const cors=(env:Env)=>({"access-control-allow-origin":env.FRONTEND_ORIGIN||"*","access-control-allow-headers":"Authorization, Content-Type","access-control-allow-methods":"GET,POST,PUT,PATCH,DELETE,OPTIONS"});
+const cors=(env:Env,req:Request)=>{const origin=req.headers.get("origin")||"";const allowed=new Set([env.FRONTEND_ORIGIN,"http://localhost:5173","https://mhd-azeem.github.io"]);const allow=allowed.has(origin)?origin:(env.FRONTEND_ORIGIN||"http://localhost:5173");return {"access-control-allow-origin":allow,"vary":"Origin","access-control-allow-headers":"Authorization, Content-Type","access-control-allow-methods":"GET,POST,PUT,PATCH,DELETE,OPTIONS"};};
 const fail=(m:string,s=400,h:HeadersInit={})=>json({error:m},s,h);
 const hex=(a:Uint8Array)=>[...a].map(b=>b.toString(16).padStart(2,"0")).join("");
 async function sha256(v:string){return hex(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v))))}
@@ -11,7 +11,7 @@ async function session(env:Env,userId:number,schoolId:number){const token=hex(cr
 async function auth(req:Request,env:Env):Promise<Auth|null>{const h=req.headers.get("authorization");if(!h?.startsWith("Bearer "))return null;return await env.DB.prepare("SELECT u.id userId,u.school_id schoolId,u.role,u.full_name fullName,u.username FROM sessions s JOIN users u ON u.id=s.user_id JOIN schools sc ON sc.id=u.school_id WHERE s.token_hash=? AND s.expires_at>datetime('now') AND u.active=1 AND sc.active=1").bind(await sha256(h.slice(7))).first<Auth>()||null}
 const admin=(a:Auth)=>["SUPER_ADMIN","SCHOOL_ADMIN","SECTION_HEAD"].includes(a.role);
 async function classAllowed(env:Env,a:Auth,id:number){if(a.role!=="TEACHER")return !!await env.DB.prepare("SELECT id FROM classes WHERE id=? AND school_id=? AND active=1").bind(id,a.schoolId).first();return !!await env.DB.prepare("SELECT 1 FROM teacher_class_assignments t JOIN classes c ON c.id=t.class_id WHERE t.school_id=? AND t.teacher_id=? AND t.class_id=? AND c.active=1").bind(a.schoolId,a.userId,id).first()}
-export default {async fetch(req:Request,env:Env):Promise<Response>{const u=new URL(req.url),p=u.pathname,h=cors(env);if(req.method==="OPTIONS")return new Response(null,{status:204,headers:h});try{
+export default {async fetch(req:Request,env:Env):Promise<Response>{const u=new URL(req.url),p=u.pathname,h=cors(env,req);if(req.method==="OPTIONS")return new Response(null,{status:204,headers:h});try{
 if(p==="/api/public/status"&&req.method==="GET"){const r=await env.DB.prepare("SELECT COUNT(*) c FROM schools s JOIN users u ON u.school_id=s.id WHERE s.active=1 AND u.active=1 AND u.role IN ('SCHOOL_ADMIN','SECTION_HEAD','SUPER_ADMIN')").first<{c:number}>();return json({initialized:(r?.c||0)>0},200,h)}
 if(p==="/api/public/setup"&&req.method==="POST"){
   const configured=await env.DB.prepare("SELECT COUNT(*) c FROM schools s JOIN users u ON u.school_id=s.id WHERE s.active=1 AND u.active=1 AND u.role IN ('SCHOOL_ADMIN','SECTION_HEAD','SUPER_ADMIN')").first<{c:number}>();
