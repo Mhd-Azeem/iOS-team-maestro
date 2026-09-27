@@ -1,14 +1,14 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android {
-  namespace = "com.azeem.schoolattendance"
+  namespace = "com.azeem.maestroattendance"
   compileSdk = 35
   defaultConfig {
-    applicationId = "com.azeem.schoolattendance"
+    applicationId = "com.azeem.maestroattendance"
     minSdk = 24
     targetSdk = 35
     versionCode = 1
     versionName = "1.0.0"
-    buildConfigField("String","APP_URL","\"\${project.findProperty("APP_URL") ?: "https://attendance.example.com"}\"")
+    buildConfigField("String","APP_URL","\"\${project.findProperty("APP_URL") ?: "https://mhd-azeem.github.io/iOS-team-maestro/"}\"")
     buildConfigField("String","GITHUB_REPO","\"Mhd-Azeem/iOS-team-maestro\"")
   }
   buildFeatures { buildConfig = true }
