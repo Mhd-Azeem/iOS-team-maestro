@@ -1,0 +1,50 @@
+name: Android Build Check
+
+on:
+  push:
+    branches:
+      - "claude/team-maestro-exam-ios-yc6u56"
+    paths:
+      - "android/**"
+      - "web/**"
+      - ".github/workflows/android-build-check.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "web/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build and bundle web app
+        working-directory: web
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          rm -rf ../android/app/src/main/assets/web
+          mkdir -p ../android/app/src/main/assets/web
+          cp -R dist/. ../android/app/src/main/assets/web/
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Generate Gradle wrapper
+        working-directory: android
+        run: gradle wrapper
+
+      - name: Compile Android release
+        working-directory: android
+        run: ./gradlew assembleRelease
