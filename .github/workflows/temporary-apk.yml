@@ -5,6 +5,8 @@ on:
     branches:
       - "claude/team-maestro-exam-ios-yc6u56"
     paths:
+      - "android/**"
+      - "web/**"
       - ".github/workflows/temporary-apk.yml"
   workflow_dispatch:
 
