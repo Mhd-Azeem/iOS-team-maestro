@@ -1,23 +1,28 @@
 name: Android Release
 
 on:
-  push:
-    branches:
-      - "claude/team-maestro-exam-ios-yc6u56"
-    paths:
-      - "android/**"
-      - "web/**"
-      - ".github/workflows/android-release.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-release:
+  signed-release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify permanent signing secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS_VALUE: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD_VALUE: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS_VALUE" ] || [ -z "$KEY_PASSWORD_VALUE" ]; then
+            echo "::error::Signing setup is incomplete. Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD in repository Actions secrets."
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -44,23 +49,6 @@ jobs:
       - name: Generate Gradle wrapper
         working-directory: android
         run: gradle wrapper
-
-      - name: Compile Android release
-        working-directory: android
-        run: ./gradlew assembleRelease
-
-      - name: Verify permanent signing secrets
-        env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS_VALUE: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD_VALUE: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          if [ -z "$KEYSTORE_B64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS_VALUE" ] || [ -z "$KEY_PASSWORD_VALUE" ]; then
-            echo "::error::Permanent Android signing secrets are not configured."
-            echo "::error::Required: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD"
-            exit 1
-          fi
 
       - name: Restore permanent keystore
         env:
