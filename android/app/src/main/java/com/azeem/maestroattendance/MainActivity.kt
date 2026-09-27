@@ -13,9 +13,11 @@ import android.webkit.DownloadListener
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import androidx.webkit.WebViewAssetLoader
 
 class MainActivity : AppCompatActivity() {
   private lateinit var web: WebView
@@ -27,6 +29,10 @@ class MainActivity : AppCompatActivity() {
     web = WebView(this)
     setContentView(web)
 
+    val assetLoader = WebViewAssetLoader.Builder()
+      .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+      .build()
+
     web.settings.javaScriptEnabled = true
     web.settings.domStorageEnabled = true
     web.settings.databaseEnabled = true
@@ -37,10 +43,13 @@ class MainActivity : AppCompatActivity() {
 
     web.webChromeClient = WebChromeClient()
     web.webViewClient = object : WebViewClient() {
+      override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+        return request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+      }
+
       override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
         val uri = request?.url ?: return false
-        val appUri = Uri.parse(BuildConfig.APP_URL)
-        if (uri.host == appUri.host && uri.path?.startsWith("/iOS-team-maestro") == true) return false
+        if (uri.host == "appassets.androidplatform.net") return false
         startActivity(Intent(Intent.ACTION_VIEW, uri))
         return true
       }
@@ -59,18 +68,10 @@ class MainActivity : AppCompatActivity() {
       (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
     })
 
-    if (isOnline()) {
-      web.loadUrl(BuildConfig.APP_URL)
-    } else {
-      web.loadData(
-        "<html><body style='font-family:sans-serif;text-align:center;padding:40px'><h2>No internet connection</h2><p>Please reconnect and reopen the app.</p></body></html>",
-        "text/html",
-        "UTF-8"
-      )
-    }
+    web.loadUrl(BuildConfig.APP_URL)
 
     updater = UpdateManager(this)
-    updater.checkForUpdate()
+    if (isOnline()) updater.checkForUpdate()
   }
 
   private fun isOnline(): Boolean {
