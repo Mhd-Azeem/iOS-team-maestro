@@ -12,8 +12,55 @@ async function auth(req:Request,env:Env):Promise<Auth|null>{const h=req.headers.
 const admin=(a:Auth)=>["SUPER_ADMIN","SCHOOL_ADMIN","SECTION_HEAD"].includes(a.role);
 async function classAllowed(env:Env,a:Auth,id:number){if(a.role!=="TEACHER")return !!await env.DB.prepare("SELECT id FROM classes WHERE id=? AND school_id=? AND active=1").bind(id,a.schoolId).first();return !!await env.DB.prepare("SELECT 1 FROM teacher_class_assignments t JOIN classes c ON c.id=t.class_id WHERE t.school_id=? AND t.teacher_id=? AND t.class_id=? AND c.active=1").bind(a.schoolId,a.userId,id).first()}
 export default {async fetch(req:Request,env:Env):Promise<Response>{const u=new URL(req.url),p=u.pathname,h=cors(env);if(req.method==="OPTIONS")return new Response(null,{status:204,headers:h});try{
-if(p==="/api/public/status"&&req.method==="GET"){const r=await env.DB.prepare("SELECT COUNT(*) c FROM schools").first<{c:number}>();return json({initialized:(r?.c||0)>0},200,h)}
-if(p==="/api/public/setup"&&req.method==="POST"){const n=await env.DB.prepare("SELECT COUNT(*) c FROM schools").first<{c:number}>();if((n?.c||0)>0)return fail("Platform has already been initialized.",409,h);const b=await body(req);if(!b.schoolName||!b.adminName||!b.username||!b.password)return fail("School and administrator details are required.",400,h);const sr=await env.DB.prepare("INSERT INTO schools(name,short_name,motto,app_name) VALUES(?,?,?,?)").bind(b.schoolName,b.shortName||null,b.motto||null,b.appName||"School Attendance App").run();const schoolId=Number(sr.meta.last_row_id),salt=hex(crypto.getRandomValues(new Uint8Array(16))),ph=await passwordHash(String(b.password),salt);const ur=await env.DB.prepare("INSERT INTO users(school_id,full_name,username,password_hash,password_salt,role) VALUES(?,?,?,?,?,'SCHOOL_ADMIN')").bind(schoolId,b.adminName,b.username,ph,salt).run();await env.DB.prepare("INSERT INTO school_settings(school_id) VALUES(?)").bind(schoolId).run();return json({token:await session(env,Number(ur.meta.last_row_id),schoolId)},201,h)}
+if(p==="/api/public/status"&&req.method==="GET"){const r=await env.DB.prepare("SELECT COUNT(*) c FROM schools s JOIN users u ON u.school_id=s.id WHERE s.active=1 AND u.active=1 AND u.role IN ('SCHOOL_ADMIN','SECTION_HEAD','SUPER_ADMIN')").first<{c:number}>();return json({initialized:(r?.c||0)>0},200,h)}
+if(p==="/api/public/setup"&&req.method==="POST"){
+  const configured=await env.DB.prepare("SELECT COUNT(*) c FROM schools s JOIN users u ON u.school_id=s.id WHERE s.active=1 AND u.active=1 AND u.role IN ('SCHOOL_ADMIN','SECTION_HEAD','SUPER_ADMIN')").first<{c:number}>();
+  if((configured?.c||0)>0)return fail("Platform has already been initialized.",409,h);
+  const b=await body(req);
+  if(!b.schoolName||!b.adminName||!b.username||!b.password)return fail("School and administrator details are required.",400,h);
+  if(String(b.password).length<6)return fail("Administrator password must be at least 6 characters.",400,h);
+
+  let stage="cleaning previous incomplete setup";
+  let schoolId:number|undefined;
+  try{
+    await env.DB.prepare("DELETE FROM schools WHERE id NOT IN (SELECT DISTINCT school_id FROM users)").run();
+
+    stage="creating school";
+    const sr=await env.DB.prepare("INSERT INTO schools(name,short_name,motto,app_name) VALUES(?,?,?,?)")
+      .bind(String(b.schoolName).trim(),String(b.shortName||"").trim()||null,String(b.motto||"").trim()||null,String(b.appName||"School Attendance App").trim())
+      .run();
+    schoolId=Number(sr.meta.last_row_id);
+    if(!schoolId)throw new Error("D1 did not return the new school ID");
+
+    stage="securing administrator password";
+    const salt=hex(crypto.getRandomValues(new Uint8Array(16)));
+    const ph=await passwordHash(String(b.password),salt);
+
+    stage="creating administrator";
+    const ur=await env.DB.prepare("INSERT INTO users(school_id,full_name,username,password_hash,password_salt,role) VALUES(?,?,?,?,?,'SCHOOL_ADMIN')")
+      .bind(schoolId,String(b.adminName).trim(),String(b.username).trim(),ph,salt).run();
+    const userId=Number(ur.meta.last_row_id);
+    if(!userId)throw new Error("D1 did not return the new administrator ID");
+
+    stage="creating school settings";
+    await env.DB.prepare("INSERT OR IGNORE INTO school_settings(school_id) VALUES(?)").bind(schoolId).run();
+
+    stage="creating login session";
+    const token=await session(env,userId,schoolId);
+    return json({token},201,h);
+  }catch(e){
+    console.error("First-time setup failed at stage:",stage,e);
+    if(schoolId){
+      try{
+        await env.DB.prepare("DELETE FROM school_settings WHERE school_id=?").bind(schoolId).run();
+        await env.DB.prepare("DELETE FROM users WHERE school_id=?").bind(schoolId).run();
+        await env.DB.prepare("DELETE FROM schools WHERE id=?").bind(schoolId).run();
+      }catch(cleanupError){console.error("Setup cleanup failed:",cleanupError)}
+    }
+    const detail=e instanceof Error?e.message:"Unknown backend error";
+    return json({error:"Setup failed while "+stage+".",detail},500,h);
+  }
+}
 if(p==="/api/login"&&req.method==="POST"){const b=await body(req),rows=await env.DB.prepare("SELECT u.*,s.active school_active FROM users u JOIN schools s ON s.id=u.school_id WHERE u.username=?").bind(String(b.username||"")).all<any>();let found:any=null;for(const r of rows.results){if(await passwordHash(String(b.password||""),r.password_salt)===r.password_hash){found=r;break}}if(!found||!found.active||!found.school_active)return fail("Invalid username or password.",401,h);return json({token:await session(env,found.id,found.school_id)},200,h)}
 const a=await auth(req,env);if(!a)return fail("Please sign in to continue.",401,h);
 if(p==="/api/logout"&&req.method==="POST"){const t=req.headers.get("authorization")!.slice(7);await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await sha256(t)).run();return json({ok:true},200,h)}
