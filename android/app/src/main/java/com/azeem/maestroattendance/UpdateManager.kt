@@ -19,6 +19,8 @@ import kotlin.concurrent.thread
 class UpdateManager(private val context: Context) {
   private val downloads = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
   private var updateDownloadId: Long = -1L
+  private var pendingUrl: String? = null
+  private var pendingVersion: String? = null
 
   fun checkForUpdate() {
     thread {
@@ -67,7 +69,9 @@ class UpdateManager(private val context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
       !context.packageManager.canRequestPackageInstalls()
     ) {
-      Toast.makeText(context, "Allow app installs, then tap Update again.", Toast.LENGTH_LONG).show()
+      pendingUrl = url
+      pendingVersion = version
+      Toast.makeText(context, "Allow installs from this app to continue the update.", Toast.LENGTH_LONG).show()
       val intent = Intent(
         Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
         Uri.parse("package:${context.packageName}")
@@ -76,6 +80,8 @@ class UpdateManager(private val context: Context) {
       return
     }
 
+    pendingUrl = null
+    pendingVersion = null
     val fileName = "SchoolAttendance-$version.apk"
     val request = DownloadManager.Request(Uri.parse(url))
       .setTitle("School Attendance update")
@@ -87,6 +93,16 @@ class UpdateManager(private val context: Context) {
     updateDownloadId = downloads.enqueue(request)
     registerCompletionReceiver()
     Toast.makeText(context, "Update download started.", Toast.LENGTH_SHORT).show()
+  }
+
+  fun resumePendingUpdate() {
+    val url = pendingUrl ?: return
+    val version = pendingVersion ?: return
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+      context.packageManager.canRequestPackageInstalls()
+    ) {
+      startDownload(url, version)
+    }
   }
 
   private fun registerCompletionReceiver() {
