@@ -34,18 +34,21 @@ android {
     jvmTarget = "17"
   }
 
+  val keystorePath = System.getenv("KEYSTORE_FILE")
+  val permanentReleaseSigning = if (!keystorePath.isNullOrBlank()) {
+    signingConfigs.create("permanentRelease") {
+      storeFile = file(keystorePath)
+      storePassword = System.getenv("KEYSTORE_PASSWORD")
+      keyAlias = System.getenv("KEY_ALIAS")
+      keyPassword = System.getenv("KEY_PASSWORD")
+    }
+  } else null
+
   buildTypes {
     release {
       isMinifyEnabled = false
-
-      val keystorePath = System.getenv("KEYSTORE_FILE")
-      if (!keystorePath.isNullOrBlank()) {
-        signingConfig = signingConfigs.create("release") {
-          storeFile = file(keystorePath)
-          storePassword = System.getenv("KEYSTORE_PASSWORD")
-          keyAlias = System.getenv("KEY_ALIAS")
-          keyPassword = System.getenv("KEY_PASSWORD")
-        }
+      if (permanentReleaseSigning != null) {
+        signingConfig = permanentReleaseSigning
       }
     }
   }
