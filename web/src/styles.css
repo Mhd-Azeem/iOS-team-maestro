@@ -611,3 +611,34 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
   .studentAddCard{margin:0}
   .bulkBox{min-height:190px}
 }
+
+
+/* Authentication tabs */
+.authTabs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  padding:5px;
+  margin-bottom:20px;
+  border-radius:16px;
+  background:#eef4f1;
+}
+.authTabs button{
+  min-height:44px;
+  border-radius:12px;
+  background:transparent;
+  color:#68756f;
+  box-shadow:none;
+  font-weight:850;
+}
+.authTabs button.active{
+  background:#fff;
+  color:var(--primary-strong);
+  box-shadow:0 5px 16px rgba(18,49,36,.09);
+}
+.authTitle p{
+  margin:-8px 0 16px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.5;
+}
