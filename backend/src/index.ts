@@ -324,14 +324,13 @@ export default {
         const b = await requestBody(req);
         const name = String(b.name || "").trim();
         const displayName = String(b.display_name || "").trim();
-        const gradeId = b.grade_id ? Number(b.grade_id) : null;
+        const gradeId = Number(b.grade_id || 0);
+        if (!gradeId) return fail("Please select a grade before creating a class.");
         if (!name || !displayName) return fail("Class name and display name are required.");
-        if (gradeId) {
-          const grade = await env.DB.prepare(
-            "SELECT id FROM grades WHERE id=? AND school_id=? AND active=1"
-          ).bind(gradeId, auth.schoolId).first();
-          if (!grade) return fail("Invalid grade.");
-        }
+        const grade = await env.DB.prepare(
+          "SELECT id FROM grades WHERE id=? AND school_id=? AND active=1"
+        ).bind(gradeId, auth.schoolId).first();
+        if (!grade) return fail("Invalid grade.");
         const result = await env.DB.prepare(
           "INSERT INTO classes(school_id,grade_id,name,display_name,academic_year) VALUES(?,?,?,?,?)"
         ).bind(
