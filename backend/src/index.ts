@@ -61,6 +61,37 @@ if(p==="/api/public/setup"&&req.method==="POST"){
     return json({error:"Setup failed while "+stage+".",detail},500,h);
   }
 }
+if(p==="/api/register"&&req.method==="POST"){
+  const b=await body(req);
+  const schoolName=String(b.schoolName||"").trim(),adminName=String(b.adminName||"").trim(),username=String(b.username||"").trim(),password=String(b.password||"");
+  if(!schoolName||!adminName||!username||!password)return fail("School name, administrator name, username and password are required.",400,h);
+  if(password.length<6)return fail("Password must be at least 6 characters.",400,h);
+  const existing=await env.DB.prepare("SELECT id FROM users WHERE lower(username)=lower(?) LIMIT 1").bind(username).first();
+  if(existing)return fail("This username is already in use. Please choose another username.",409,h);
+  let schoolId:number|undefined;
+  try{
+    const sr=await env.DB.prepare("INSERT INTO schools(name,short_name,motto,app_name) VALUES(?,?,?,?)")
+      .bind(schoolName,String(b.shortName||"").trim()||null,String(b.motto||"").trim()||null,String(b.appName||"School Attendance App").trim()||"School Attendance App").run();
+    schoolId=Number(sr.meta.last_row_id);
+    if(!schoolId)throw new Error("Could not create school");
+    const salt=hex(crypto.getRandomValues(new Uint8Array(16))),ph=await passwordHash(password,salt);
+    const ur=await env.DB.prepare("INSERT INTO users(school_id,full_name,username,password_hash,password_salt,role) VALUES(?,?,?,?,?,'SCHOOL_ADMIN')")
+      .bind(schoolId,adminName,username,ph,salt).run();
+    const userId=Number(ur.meta.last_row_id);
+    if(!userId)throw new Error("Could not create administrator");
+    await env.DB.prepare("INSERT OR IGNORE INTO school_settings(school_id) VALUES(?)").bind(schoolId).run();
+    return json({token:await session(env,userId,schoolId)},201,h);
+  }catch(e){
+    if(schoolId){
+      try{
+        await env.DB.prepare("DELETE FROM school_settings WHERE school_id=?").bind(schoolId).run();
+        await env.DB.prepare("DELETE FROM users WHERE school_id=?").bind(schoolId).run();
+        await env.DB.prepare("DELETE FROM schools WHERE id=?").bind(schoolId).run();
+      }catch{}
+    }
+    return fail("Registration could not be completed.",500,h);
+  }
+}
 if(p==="/api/login"&&req.method==="POST"){const b=await body(req),rows=await env.DB.prepare("SELECT u.*,s.active school_active FROM users u JOIN schools s ON s.id=u.school_id WHERE u.username=?").bind(String(b.username||"")).all<any>();let found:any=null;for(const r of rows.results){if(await passwordHash(String(b.password||""),r.password_salt)===r.password_hash){found=r;break}}if(!found||!found.active||!found.school_active)return fail("Invalid username or password.",401,h);return json({token:await session(env,found.id,found.school_id)},200,h)}
 const a=await auth(req,env);if(!a)return fail("Please sign in to continue.",401,h);
 if(p==="/api/logout"&&req.method==="POST"){const t=req.headers.get("authorization")!.slice(7);await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await sha256(t)).run();return json({ok:true},200,h)}
