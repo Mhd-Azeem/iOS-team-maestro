@@ -64,10 +64,20 @@ jobs:
         working-directory: android
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/android/release.keystore
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew clean assembleRelease
+          KEYSTORE_PASSWORD_RAW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS_RAW: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD_RAW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          export KEYSTORE_PASSWORD="$(printf '%s' "$KEYSTORE_PASSWORD_RAW" | tr -d '\r\n')"
+          export KEY_ALIAS="$(printf '%s' "$KEY_ALIAS_RAW" | tr -d '\r\n' | xargs)"
+          export KEY_PASSWORD="$(printf '%s' "$KEY_PASSWORD_RAW" | tr -d '\r\n')"
+
+          if ! keytool -list -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::The configured Android key alias does not match the permanent keystore."
+            exit 1
+          fi
+
+          ./gradlew clean assembleRelease
 
       - name: Read app version
         id: version
