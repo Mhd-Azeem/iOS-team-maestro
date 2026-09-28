@@ -70,8 +70,63 @@ if(p==="/api/grades"&&req.method==="GET")return json((await env.DB.prepare("SELE
 if(p==="/api/grades"&&req.method==="POST"){if(!admin(a))return fail("You do not have permission to manage grades.",403,h);const b=await body(req),r=await env.DB.prepare("INSERT INTO grades(school_id,name) VALUES(?,?)").bind(a.schoolId,b.name).run();return json({id:r.meta.last_row_id},201,h)}
 if(p==="/api/classes"&&req.method==="GET"){let q="SELECT id,grade_id,name,display_name,academic_year FROM classes WHERE school_id=? AND active=1",args:any[]=[a.schoolId];if(a.role==="TEACHER"){q+=" AND id IN (SELECT class_id FROM teacher_class_assignments WHERE school_id=? AND teacher_id=?)";args.push(a.schoolId,a.userId)}q+=" ORDER BY display_name";return json((await env.DB.prepare(q).bind(...args).all()).results,200,h)}
 if(p==="/api/classes"&&req.method==="POST"){if(!admin(a))return fail("You do not have permission to manage classes.",403,h);const b=await body(req),g=await env.DB.prepare("SELECT id FROM grades WHERE id=? AND school_id=?").bind(b.grade_id,a.schoolId).first();if(!g)return fail("Invalid grade.",400,h);const r=await env.DB.prepare("INSERT INTO classes(school_id,grade_id,name,display_name,academic_year) VALUES(?,?,?,?,?)").bind(a.schoolId,b.grade_id,b.name,b.display_name,b.academic_year||null).run();return json({id:r.meta.last_row_id},201,h)}
-if(p==="/api/students"&&req.method==="GET"){const classId=Number(u.searchParams.get("class_id")||0);if(classId&&!await classAllowed(env,a,classId))return fail("You do not have permission to view this class.",403,h);let q="SELECT s.id,s.admission_number,s.full_name,s.class_id,c.display_name class_name FROM students s JOIN classes c ON c.id=s.class_id WHERE s.school_id=? AND s.status='ACTIVE'",args:any[]=[a.schoolId];if(classId){q+=" AND s.class_id=?";args.push(classId)}else if(a.role==="TEACHER"){q+=" AND s.class_id IN (SELECT class_id FROM teacher_class_assignments WHERE school_id=? AND teacher_id=?)";args.push(a.schoolId,a.userId)}q+=" ORDER BY c.display_name,s.admission_number";return json((await env.DB.prepare(q).bind(...args).all()).results,200,h)}
-if(p==="/api/students"&&req.method==="POST"){if(!admin(a))return fail("You do not have permission to add students.",403,h);const b=await body(req),c=await env.DB.prepare("SELECT grade_id FROM classes WHERE id=? AND school_id=?").bind(b.class_id,a.schoolId).first<{grade_id:number}>();if(!c)return fail("Invalid class.",400,h);try{const r=await env.DB.prepare("INSERT INTO students(school_id,admission_number,full_name,grade_id,class_id) VALUES(?,?,?,?,?)").bind(a.schoolId,b.admission_number,b.full_name,c.grade_id,b.class_id).run();return json({id:r.meta.last_row_id},201,h)}catch{return fail("This admission number already exists.",409,h)}}
+if(p==="/api/students"&&req.method==="GET"){
+  const classParam=u.searchParams.get("class_id");
+  const classId=classParam?Number(classParam):0;
+  if(classId&&!await classAllowed(env,a,classId))return fail("You do not have permission to view this class.",403,h);
+  let q="SELECT s.id,s.admission_number,s.full_name,s.grade_id,s.class_id,g.name grade_name,c.display_name class_name FROM students s LEFT JOIN grades g ON g.id=s.grade_id LEFT JOIN classes c ON c.id=s.class_id WHERE s.school_id=? AND s.status='ACTIVE'",args:any[]=[a.schoolId];
+  if(classId){q+=" AND s.class_id=?";args.push(classId)}
+  else if(a.role==="TEACHER"){q+=" AND s.class_id IN (SELECT class_id FROM teacher_class_assignments WHERE school_id=? AND teacher_id=?)";args.push(a.schoolId,a.userId)}
+  q+=" ORDER BY COALESCE(c.display_name,''),s.admission_number";
+  return json((await env.DB.prepare(q).bind(...args).all()).results,200,h)
+}
+if(p==="/api/students"&&req.method==="POST"){
+  if(!admin(a))return fail("You do not have permission to add students.",403,h);
+  const b=await body(req);
+  const admission=String(b.admission_number||"").trim(),fullName=String(b.full_name||"").trim();
+  if(!admission||!fullName)return fail("Admission number and student name are required.",400,h);
+  let gradeId:number|null=b.grade_id?Number(b.grade_id):null,classId:number|null=b.class_id?Number(b.class_id):null;
+  if(classId){
+    const cls=await env.DB.prepare("SELECT grade_id FROM classes WHERE id=? AND school_id=? AND active=1").bind(classId,a.schoolId).first<{grade_id:number}>();
+    if(!cls)return fail("Invalid class.",400,h);
+    gradeId=cls.grade_id;
+  }else if(gradeId){
+    const grade=await env.DB.prepare("SELECT id FROM grades WHERE id=? AND school_id=? AND active=1").bind(gradeId,a.schoolId).first();
+    if(!grade)return fail("Invalid grade.",400,h);
+  }
+  try{
+    const r=await env.DB.prepare("INSERT INTO students(school_id,admission_number,full_name,grade_id,class_id) VALUES(?,?,?,?,?)").bind(a.schoolId,admission,fullName,gradeId,classId).run();
+    return json({id:r.meta.last_row_id},201,h)
+  }catch{return fail("This admission number already exists.",409,h)}
+}
+if(p==="/api/students/bulk"&&req.method==="POST"){
+  if(!admin(a))return fail("You do not have permission to add students.",403,h);
+  const b=await body(req),rows=Array.isArray(b.students)?b.students:[];
+  if(!rows.length)return fail("Add at least one student.",400,h);
+  if(rows.length>500)return fail("A maximum of 500 students can be added at once.",400,h);
+  const seen=new Set<string>(),prepared:any[]=[];
+  for(const item of rows){
+    const admission=String(item.admission_number||"").trim(),fullName=String(item.full_name||"").trim();
+    if(!admission||!fullName)return fail("Every row needs an admission number and student name.",400,h);
+    const key=admission.toLowerCase();
+    if(seen.has(key))return fail("Duplicate admission number in bulk list: "+admission,400,h);
+    seen.add(key);
+    let gradeId:number|null=item.grade_id?Number(item.grade_id):null,classId:number|null=item.class_id?Number(item.class_id):null;
+    if(classId){
+      const cls=await env.DB.prepare("SELECT grade_id FROM classes WHERE id=? AND school_id=? AND active=1").bind(classId,a.schoolId).first<{grade_id:number}>();
+      if(!cls)return fail("Invalid class for "+admission+".",400,h);
+      gradeId=cls.grade_id;
+    }else if(gradeId){
+      const grade=await env.DB.prepare("SELECT id FROM grades WHERE id=? AND school_id=? AND active=1").bind(gradeId,a.schoolId).first();
+      if(!grade)return fail("Invalid grade for "+admission+".",400,h);
+    }
+    prepared.push(env.DB.prepare("INSERT INTO students(school_id,admission_number,full_name,grade_id,class_id) VALUES(?,?,?,?,?)").bind(a.schoolId,admission,fullName,gradeId,classId));
+  }
+  try{
+    await env.DB.batch(prepared);
+    return json({added:prepared.length},201,h)
+  }catch{return fail("Bulk add failed. Check that admission numbers are unique and try again.",409,h)}
+}
 if(p==="/api/teachers"&&req.method==="GET"){if(!admin(a))return fail("You do not have permission to view teachers.",403,h);return json((await env.DB.prepare("SELECT id,full_name,username,active FROM users WHERE school_id=? AND role='TEACHER' ORDER BY full_name").bind(a.schoolId).all()).results,200,h)}
 if(p==="/api/teachers"&&req.method==="POST"){if(!admin(a))return fail("You do not have permission to create teachers.",403,h);const b=await body(req);if(String(b.password||"").length<4)return fail("Temporary password must be at least 4 characters.",400,h);const salt=hex(crypto.getRandomValues(new Uint8Array(16))),ph=await passwordHash(String(b.password),salt),r=await env.DB.prepare("INSERT INTO users(school_id,full_name,username,password_hash,password_salt,role,force_password_change) VALUES(?,?,?,?,?,'TEACHER',1)").bind(a.schoolId,b.full_name,b.username,ph,salt).run(),teacherId=Number(r.meta.last_row_id);for(const id of b.class_ids||[])await env.DB.prepare("INSERT OR IGNORE INTO teacher_class_assignments(school_id,teacher_id,class_id) SELECT ?,?,id FROM classes WHERE id=? AND school_id=?").bind(a.schoolId,teacherId,id,a.schoolId).run();return json({id:teacherId},201,h)}
 if(p==="/api/attendance"&&req.method==="POST"){const b=await body(req);if(!await classAllowed(env,a,Number(b.class_id)))return fail("You do not have permission to submit attendance for this class.",403,h);const active=await env.DB.prepare("SELECT id FROM students WHERE school_id=? AND class_id=? AND status='ACTIVE'").bind(a.schoolId,b.class_id).all<any>(),ids=new Set(active.results.map(x=>x.id)),records=Array.isArray(b.records)?b.records:[];if(records.length!==ids.size||records.some((r:any)=>!ids.has(r.student_id)||!["PRESENT","ABSENT"].includes(r.status)))return fail("Attendance must be recorded for every active student.",400,h);await env.DB.prepare("INSERT INTO attendance_sessions(school_id,class_id,date,submitted_by) VALUES(?,?,?,?) ON CONFLICT(school_id,class_id,date) DO UPDATE SET submitted_by=excluded.submitted_by,updated_at=CURRENT_TIMESTAMP").bind(a.schoolId,b.class_id,b.date,a.userId).run();const s=await env.DB.prepare("SELECT id FROM attendance_sessions WHERE school_id=? AND class_id=? AND date=?").bind(a.schoolId,b.class_id,b.date).first<{id:number}>();for(const r of records)await env.DB.prepare("INSERT INTO attendance_records(school_id,session_id,student_id,status) VALUES(?,?,?,?) ON CONFLICT(session_id,student_id) DO UPDATE SET status=excluded.status,updated_at=CURRENT_TIMESTAMP").bind(a.schoolId,s!.id,r.student_id,r.status).run();return json({ok:true},200,h)}
