@@ -159,12 +159,12 @@ function SettingsPage({classes,refresh,done}:{classes:C[];refresh:()=>void;done:
   return <div className="settingsPage">
     <div className="card sectionCard">
       <div className="sectionTitle"><div><span className="eyebrow">Administration</span><h2>Settings</h2></div><div className="sectionIcon"><Icon name="settings"/></div></div>
-      <p className="settingsHint">Manage school structure and teacher accounts here. Grades and classes are optional, and student addition is kept separately under Students.</p>
+      <p className="settingsHint">Manage school structure and teacher accounts here. Grade and class setup is optional, but every class you create must belong to a grade. Student addition is kept separately under Students.</p>
       {error&&<div className="error">{error}</div>}
     </div>
     <div className="settingsGrid">
       <form className="card" onSubmit={addGrade}><div className="formHeading"><h3>Grades</h3><Icon name="school"/></div><input name="name" placeholder="e.g. Grade 10" required/><button>Add Grade</button></form>
-      <form className="card" onSubmit={addClass}><div className="formHeading"><h3>Classes <span className="optionalText">Optional</span></h3><Icon name="classes"/></div><label>Grade <span className="optionalText">Optional</span><select name="grade_id"><option value="">No grade linked</option>{grades.map(g=><option value={g.id} key={g.id}>{g.name}</option>)}</select></label><input name="name" placeholder="Class name, e.g. A" required/><input name="display_name" placeholder="Display name, e.g. 10-A" required/><input name="academic_year" placeholder="Academic year, e.g. 2026"/><button>Add Class</button></form>
+      <form className="card" onSubmit={addClass}><div className="formHeading"><h3>Classes <span className="optionalText">Optional</span></h3><Icon name="classes"/></div><label>Grade<select name="grade_id" required><option value="">Select grade</option>{grades.map(g=><option value={g.id} key={g.id}>{g.name}</option>)}</select></label><input name="name" placeholder="Class name, e.g. A" required/><input name="display_name" placeholder="Display name, e.g. 10-A" required/><input name="academic_year" placeholder="Academic year, e.g. 2026"/><button>Add Class</button></form>
       <form className="card" onSubmit={addTeacher}><div className="formHeading"><h3>Teachers</h3><Icon name="profile"/></div><input name="full_name" placeholder="Teacher full name" required/><input name="username" placeholder="Username" required/><input name="password" placeholder="Temporary password" minLength={4} required/><label>Assigned Class <span className="optionalText">Optional</span><select name="class_id"><option value="">No class assigned</option>{classes.map(c=><option value={c.id} key={c.id}>{c.display_name}</option>)}</select></label><button>Add Teacher</button></form>
     </div>
   </div>
