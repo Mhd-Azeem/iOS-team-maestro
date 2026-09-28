@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maestro-school-attendance-api",
   "main": "src/index.ts",
-  "compatibility_date": "2026-09-29",
+  "compatibility_date": "2026-09-28",
   "d1_databases": [
     {
       "binding": "DB",
