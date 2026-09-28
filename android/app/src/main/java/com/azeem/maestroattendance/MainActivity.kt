@@ -74,6 +74,11 @@ class MainActivity : AppCompatActivity() {
     if (isOnline()) updater.checkForUpdate()
   }
 
+  override fun onResume() {
+    super.onResume()
+    if (::updater.isInitialized) updater.resumePendingUpdate()
+  }
+
   private fun isOnline(): Boolean {
     val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     val network = manager.activeNetwork ?: return false
