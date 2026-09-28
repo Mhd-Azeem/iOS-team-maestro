@@ -2,6 +2,11 @@ name: Android Release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "claude/team-maestro-exam-ios-yc6u56"
+    paths:
+      - ".github/workflows/android-release.yml"
 
 permissions:
   contents: write
