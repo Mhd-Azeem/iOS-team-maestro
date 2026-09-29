@@ -2,11 +2,6 @@ name: Reset Maestro Database
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "claude/team-maestro-exam-ios-yc6u56"
-    paths:
-      - ".github/workflows/reset-database.yml"
 
 jobs:
   reset:
