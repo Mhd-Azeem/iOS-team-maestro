@@ -1,6 +1,30 @@
 import {FormEvent,useEffect,useState} from "react";
 const API=import.meta.env.VITE_API_BASE_URL||"http://localhost:8787";
 async function api(path:string,options:RequestInit={}){const token=localStorage.getItem("sat_token"),headers=new Headers(options.headers||{});headers.set("Content-Type","application/json");if(token)headers.set("Authorization","Bearer "+token);const r=await fetch(API+path,{...options,headers}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed.");return d}
+async function prepareLogo(file:File):Promise<string>{
+  if(!file.type.startsWith("image/"))throw new Error("Please select an image file.");
+  if(file.size>8*1024*1024)throw new Error("Logo image must be smaller than 8 MB.");
+  return await new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error("Could not read the selected logo."));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error("Could not open the selected logo."));
+      img.onload=()=>{
+        const max=512,scale=Math.min(1,max/Math.max(img.width,img.height));
+        const canvas=document.createElement("canvas");
+        canvas.width=Math.max(1,Math.round(img.width*scale));
+        canvas.height=Math.max(1,Math.round(img.height*scale));
+        const ctx=canvas.getContext("2d");
+        if(!ctx)return reject(new Error("Could not prepare the selected logo."));
+        ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        resolve(canvas.toDataURL("image/webp",0.86));
+      };
+      img.src=String(reader.result||"");
+    };
+    reader.readAsDataURL(file);
+  });
+}
 type C={id:number;display_name:string;grade_id:number};type S={id:number;admission_number:string;full_name:string;grade_id:number|null;class_id:number|null;grade_name?:string|null;class_name?:string|null};
 export default function App(){const[ready,setReady]=useState<boolean|null>(null),[me,setMe]=useState<any>(null),[error,setError]=useState(""),[page,setPage]=useState("home"),[dash,setDash]=useState<any>(null),[classes,setClasses]=useState<C[]>([]),[students,setStudents]=useState<S[]>([]),[success,setSuccess]=useState("");
 async function boot(){setError("");setReady(null);const s=await api("/api/public/status");setReady(s.initialized);if(localStorage.getItem("sat_token"))try{const m=await api("/api/me");setMe(m);document.documentElement.style.setProperty("--primary",m.school.primary_color||"#008759")}catch{localStorage.removeItem("sat_token")}}
@@ -12,10 +36,10 @@ async function chooseClass(id:number){setStudents(id?await api("/api/students?cl
 if(ready===null)return <div className="splash">{error?<div><h2>Connection problem</h2><p>{error}</p><button onClick={()=>boot().catch(e=>setError(e?.message||"Unable to connect to the attendance server."))}>Retry</button></div>:<div>Loading…</div>}</div>;
 if(!me)return <AuthPortal initialized={!!ready} error={error} onLogin={login} onRegister={setup}/>;
 const isAdmin=["SUPER_ADMIN","SCHOOL_ADMIN","SECTION_HEAD"].includes(me.user.role);const nav=[["home","Home","home"],["attendance","Attendance","check"],["history","History","history"],...(isAdmin?[["students","Students","students"],["settings","Settings","settings"]]:[]),["profile","Profile","profile"]];
-return <div className="shell"><aside><div className="school"><div className="schoolmark">{(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div><b>{me.school.name}</b><small>{me.school.app_name}</small></div></div><nav>{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</nav><button className="logoutBtn" onClick={logout}><Icon name="logout"/><span>Logout</span></button></aside><main><header className="pageHead"><div><span className="eyebrow">{me.school.short_name||"School Attendance"}</span><h1>{page[0].toUpperCase()+page.slice(1)}</h1><p>{me.user.full_name} · {me.user.role.replaceAll("_"," ")}</p></div><div className="avatar">{me.user.full_name.slice(0,1).toUpperCase()}</div></header>{error&&<div className="error">{error}</div>}
-{page==="home"&&<><section className="hero"><div className="heroMark">{(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div className="heroText"><span className="eyebrow light">Welcome back</span><h2>{me.school.app_name}</h2><p>{me.school.motto||me.school.name}</p></div><div className="heroBadge"><Icon name="calendar"/><span>{new Date().toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}</span></div></section><div className="stats"><Card t="Total Students" v={dash?.totalStudents||0} icon="students"/><Card t="Present Today" v={dash?.presentToday||0} icon="present"/><Card t="Absent Today" v={dash?.absentToday||0} icon="absent"/><Card t="Submitted" v={dash?(dash.submitted+"/"+dash.totalClasses):"0/0"} icon="classes"/></div><div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Today</span><h3>Class Status</h3></div><span className="countPill">{classes.length} classes</span></div>{classes.length?classes.map(c=>{const pending=dash?.pending?.some((x:any)=>x.id===c.id);return <div className="row classRow" key={c.id}><div className="classIdentity"><span className="classDot">{c.display_name.slice(0,2)}</span><span>{c.display_name}</span></div><span className={pending?"status pending":"status done"}>{pending?"Not submitted":"Submitted"}</span></div>}):<div className="emptyState"><Icon name="classes"/><b>No classes yet</b><span>Set up grades and classes from Settings.</span></div>}</div></>}
+return <div className="shell"><aside><div className="school"><div className="schoolmark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo"/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div><b>{me.school.name}</b><small>{me.school.app_name}</small></div></div><nav>{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</nav><button className="logoutBtn" onClick={logout}><Icon name="logout"/><span>Logout</span></button></aside><main><header className="pageHead"><div><span className="eyebrow">{me.school.short_name||"School Attendance"}</span><h1>{page[0].toUpperCase()+page.slice(1)}</h1><p>{me.user.full_name} · {me.user.role.replaceAll("_"," ")}</p></div><div className="avatar">{me.user.full_name.slice(0,1).toUpperCase()}</div></header>{error&&<div className="error">{error}</div>}
+{page==="home"&&<><section className="hero"><div className="heroMark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo"/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div className="heroText"><span className="eyebrow light">Welcome back</span><h2>{me.school.app_name}</h2><p>{me.school.motto||me.school.name}</p></div><div className="heroBadge"><Icon name="calendar"/><span>{new Date().toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}</span></div></section><div className="stats"><Card t="Total Students" v={dash?.totalStudents||0} icon="students"/><Card t="Present Today" v={dash?.presentToday||0} icon="present"/><Card t="Absent Today" v={dash?.absentToday||0} icon="absent"/><Card t="Submitted" v={dash?(dash.submitted+"/"+dash.totalClasses):"0/0"} icon="classes"/></div><div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Today</span><h3>Class Status</h3></div><span className="countPill">{classes.length} classes</span></div>{classes.length?classes.map(c=>{const pending=dash?.pending?.some((x:any)=>x.id===c.id);return <div className="row classRow" key={c.id}><div className="classIdentity"><span className="classDot">{c.display_name.slice(0,2)}</span><span>{c.display_name}</span></div><span className={pending?"status pending":"status done"}>{pending?"Not submitted":"Submitted"}</span></div>}):<div className="emptyState"><Icon name="classes"/><b>No classes yet</b><span>Set up grades and classes from Settings.</span></div>}</div></>}
 {page==="attendance"&&<div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Daily register</span><h2>Student Attendance</h2></div><div className="sectionIcon"><Icon name="check"/></div></div><label>Choose class<select onChange={e=>chooseClass(Number(e.target.value))}><option value="">Select a class</option>{classes.map(c=><option value={c.id} key={c.id}>{c.display_name}</option>)}</select></label><Attendance students={students} classes={classes} done={()=>{setSuccess("Attendance has been saved.");api("/api/dashboard").then(setDash)}}/></div>}
-{page==="history"&&<History/>}{page==="students"&&isAdmin&&<StudentsPage classes={classes} done={m=>{setSuccess(m);api("/api/dashboard").then(setDash)}}/>}{page==="settings"&&isAdmin&&<SettingsPage classes={classes} refresh={()=>api("/api/classes").then(setClasses)} done={m=>setSuccess(m)}/>}
+{page==="history"&&<History/>}{page==="students"&&isAdmin&&<StudentsPage classes={classes} done={m=>{setSuccess(m);api("/api/dashboard").then(setDash)}}/>}{page==="settings"&&isAdmin&&<SettingsPage classes={classes} school={me.school} refresh={()=>api("/api/classes").then(setClasses)} onSchoolUpdated={school=>setMe((current:any)=>({...current,school}))} done={m=>setSuccess(m)}/>}
 {page==="profile"&&<div className="card profileCard"><div className="profileAvatar">{me.user.full_name.slice(0,1).toUpperCase()}</div><h2>{me.user.full_name}</h2><p className="muted">@{me.user.username}</p><span className="rolePill">{me.user.role.replaceAll("_"," ")}</span><button className="secondaryDanger" onClick={logout}><Icon name="logout"/> Logout</button></div>}</main><div className="bottom">{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</div>{success&&<div className="modalbg"><div className="modal"><b>✓</b><h2>Submitted Successfully</h2><p>{success}</p><button onClick={()=>setSuccess("")}>OK</button></div></div>}</div>}
 function AuthPortal({initialized,error,onLogin,onRegister}:{initialized:boolean;error:string;onLogin:(e:FormEvent<HTMLFormElement>)=>void;onRegister:(e:FormEvent<HTMLFormElement>)=>void}){
   const[tab,setTab]=useState<"login"|"register">(initialized?"login":"register");
@@ -135,10 +159,32 @@ function IndividualStudentForm({grades,classes,onSubmit}:{grades:any[];classes:C
   </form>
 }
 
-function SettingsPage({classes,refresh,done}:{classes:C[];refresh:()=>void;done:(message:string)=>void}){
+function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[];school:any;refresh:()=>void;onSchoolUpdated:(school:any)=>void;done:(message:string)=>void}){
   const[grades,setGrades]=useState<any[]>([]);
   const[error,setError]=useState("");
+  const[logoPreview,setLogoPreview]=useState<string>(school?.logo_url||"");
+  const[logoBusy,setLogoBusy]=useState(false);
   useEffect(()=>{api("/api/grades").then(setGrades).catch(e=>setError(e.message))},[]);
+  useEffect(()=>{setLogoPreview(school?.logo_url||"")},[school?.logo_url]);
+
+  async function changeLogo(e:any){
+    const file=e.target.files?.[0];if(!file)return;
+    setError("");setLogoBusy(true);
+    try{
+      const logo_url=await prepareLogo(file);
+      const result=await api("/api/school/branding",{method:"PATCH",body:JSON.stringify({logo_url})});
+      setLogoPreview(result.school.logo_url||"");onSchoolUpdated(result.school);done("School logo updated successfully.");
+    }catch(x:any){setError(x.message)}
+    finally{setLogoBusy(false);e.target.value=""}
+  }
+  async function removeLogo(){
+    setError("");setLogoBusy(true);
+    try{
+      const result=await api("/api/school/branding",{method:"PATCH",body:JSON.stringify({logo_url:null})});
+      setLogoPreview("");onSchoolUpdated(result.school);done("School logo removed.");
+    }catch(x:any){setError(x.message)}
+    finally{setLogoBusy(false)}
+  }
 
   async function addGrade(e:FormEvent<HTMLFormElement>){
     e.preventDefault();setError("");const form=e.currentTarget,f=new FormData(form);
@@ -163,6 +209,13 @@ function SettingsPage({classes,refresh,done}:{classes:C[];refresh:()=>void;done:
       {error&&<div className="error">{error}</div>}
     </div>
     <div className="settingsGrid">
+      <div className="card brandingCard">
+        <div className="formHeading"><h3>School Logo</h3><Icon name="school"/></div>
+        <div className="logoPreview">{logoPreview?<img src={logoPreview} alt="School logo preview"/>:<div className="logoPlaceholder"><Icon name="school"/><span>No logo</span></div>}</div>
+        <label className="logoUpload">Choose Logo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={changeLogo} disabled={logoBusy}/></label>
+        <small className="logoHelp">PNG, JPG or WebP. The image is resized automatically.</small>
+        {logoPreview&&<button type="button" className="secondaryDanger" onClick={removeLogo} disabled={logoBusy}>Remove Logo</button>}
+      </div>
       <form className="card" onSubmit={addGrade}><div className="formHeading"><h3>Grades</h3><Icon name="school"/></div><input name="name" placeholder="e.g. Grade 10" required/><button>Add Grade</button></form>
       <form className="card" onSubmit={addClass}><div className="formHeading"><h3>Classes <span className="optionalText">Optional</span></h3><Icon name="classes"/></div><label>Grade<select name="grade_id" required><option value="">Select grade</option>{grades.map(g=><option value={g.id} key={g.id}>{g.name}</option>)}</select></label><input name="name" placeholder="Class name, e.g. A" required/><input name="display_name" placeholder="Display name, e.g. 10-A" required/><input name="academic_year" placeholder="Academic year, e.g. 2026"/><button>Add Class</button></form>
       <form className="card" onSubmit={addTeacher}><div className="formHeading"><h3>Teachers</h3><Icon name="profile"/></div><input name="full_name" placeholder="Teacher full name" required/><input name="username" placeholder="Username" required/><input name="password" placeholder="Temporary password" minLength={4} required/><label>Assigned Class <span className="optionalText">Optional</span><select name="class_id"><option value="">No class assigned</option>{classes.map(c=><option value={c.id} key={c.id}>{c.display_name}</option>)}</select></label><button>Add Teacher</button></form>
