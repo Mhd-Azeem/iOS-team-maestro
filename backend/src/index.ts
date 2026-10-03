@@ -240,6 +240,29 @@ export default {
         });
       }
 
+      if (path === "/api/school/branding" && req.method === "PATCH") {
+        if (!isAdmin(auth)) return fail("You do not have permission to change school branding.", 403);
+        const b = await requestBody(req);
+        let logoUrl: string | null = b.logo_url == null || b.logo_url === "" ? null : String(b.logo_url);
+        if (logoUrl) {
+          if (!/^data:image\/(png|jpeg|webp);base64,/i.test(logoUrl)) {
+            return fail("Logo must be a PNG, JPG or WebP image.");
+          }
+          if (logoUrl.length > 1000000) {
+            return fail("Logo image is too large. Please choose a smaller image.");
+          }
+        }
+        await env.DB.prepare(
+          "UPDATE schools SET logo_url=?,updated_at=CURRENT_TIMESTAMP WHERE id=?"
+        ).bind(logoUrl, auth.schoolId).run();
+        const school = await env.DB.prepare(
+          `SELECT id,name,short_name,motto,logo_url,app_name,
+                  primary_color,secondary_color,accent_color,background_color
+           FROM schools WHERE id=?`
+        ).bind(auth.schoolId).first();
+        return json({ ok: true, school });
+      }
+
       if (path === "/api/dashboard" && req.method === "GET") {
         const date = new Date().toISOString().slice(0, 10);
         const total = await env.DB.prepare(
