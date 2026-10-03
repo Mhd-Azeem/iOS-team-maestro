@@ -14,8 +14,10 @@ import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.ValueCallback
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -25,6 +27,15 @@ import androidx.webkit.WebViewAssetLoader
 class MainActivity : AppCompatActivity() {
   private lateinit var web: WebView
   private lateinit var updater: UpdateManager
+  private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+  private val fileChooserLauncher =
+    registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+      val callback = filePathCallback ?: return@registerForActivityResult
+      val uris = WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+      callback.onReceiveValue(uris)
+      filePathCallback = null
+    }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -56,7 +67,30 @@ class MainActivity : AppCompatActivity() {
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
 
-    web.webChromeClient = WebChromeClient()
+    web.webChromeClient = object : WebChromeClient() {
+      override fun onShowFileChooser(
+        webView: WebView?,
+        callback: ValueCallback<Array<Uri>>?,
+        fileChooserParams: FileChooserParams?
+      ): Boolean {
+        filePathCallback?.onReceiveValue(null)
+        filePathCallback = callback
+
+        return try {
+          val intent = fileChooserParams?.createIntent()
+            ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+              addCategory(Intent.CATEGORY_OPENABLE)
+              type = "image/*"
+            }
+          fileChooserLauncher.launch(intent)
+          true
+        } catch (_: Exception) {
+          filePathCallback?.onReceiveValue(null)
+          filePathCallback = null
+          false
+        }
+      }
+    }
     web.webViewClient = object : WebViewClient() {
       override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
         return request?.url?.let { assetLoader.shouldInterceptRequest(it) }
