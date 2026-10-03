@@ -17,6 +17,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.ValueCallback
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -46,14 +47,28 @@ class MainActivity : AppCompatActivity() {
       isAppearanceLightNavigationBars = true
     }
 
+    val root = FrameLayout(this)
     web = WebView(this)
-    setContentView(web)
 
-    ViewCompat.setOnApplyWindowInsetsListener(web) { view, insets ->
-      val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-      view.setPadding(0, systemBars.top, 0, systemBars.bottom)
+    root.addView(
+      web,
+      FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.MATCH_PARENT
+      )
+    )
+    setContentView(root)
+
+    ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+      val bars = insets.getInsets(
+        WindowInsetsCompat.Type.statusBars() or
+          WindowInsetsCompat.Type.navigationBars() or
+          WindowInsetsCompat.Type.displayCutout()
+      )
+      view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
       insets
     }
+    ViewCompat.requestApplyInsets(root)
 
     val assetLoader = WebViewAssetLoader.Builder()
       .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
@@ -63,6 +78,10 @@ class MainActivity : AppCompatActivity() {
     web.settings.domStorageEnabled = true
     web.settings.databaseEnabled = true
     web.settings.setSupportZoom(false)
+    web.settings.builtInZoomControls = false
+    web.settings.displayZoomControls = false
+    web.settings.useWideViewPort = false
+    web.settings.loadWithOverviewMode = false
 
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
