@@ -21,7 +21,7 @@
 }
 *{box-sizing:border-box}
 html,body,#root{min-height:100%;width:100%;max-width:100%;overflow-x:hidden}
-body{margin:0;background:var(--bg);-webkit-font-smoothing:antialiased}
+body{margin:0;width:100%;max-width:100%;position:relative;background:var(--bg);-webkit-font-smoothing:antialiased;overscroll-behavior-x:none}
 button,input,select{font:inherit}
 button{border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
 input,select{
@@ -137,7 +137,7 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
 .authcard form button{width:100%;margin-top:8px}
 
 /* Desktop shell */
-.shell{display:grid;grid-template-columns:270px minmax(0,1fr);min-height:100vh}
+.shell{display:grid;grid-template-columns:270px minmax(0,1fr);min-height:100vh;width:100%;max-width:100%;overflow-x:hidden}
 .shell aside{
   position:sticky;
   top:0;
@@ -192,8 +192,11 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
 
 .shell main{
   width:min(1200px,100%);
+  max-width:100%;
+  min-width:0;
   margin:0 auto;
   padding:28px 30px 42px;
+  overflow-x:hidden;
 }
 .pageHead{
   display:flex;
@@ -341,6 +344,7 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
 
 /* Attendance */
 .attendanceForm{margin-top:12px}
+.attendanceForm,.studentList,.student,.attendanceChoice{min-width:0;max-width:100%}
 .studentList{margin:12px 0 18px;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff}
 .student{
   display:flex;
@@ -453,9 +457,10 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
 .bottom{display:none}
 
 @media(max-width:900px){
-  .shell{display:block}
+  .card{width:100%;max-width:100%}
+  .shell{display:block;width:100%;max-width:100%;overflow-x:hidden}
   .shell aside{display:none}
-  .shell main{padding:18px 14px calc(96px + env(safe-area-inset-bottom))}
+  .shell main{width:100%;max-width:100%;min-width:0;margin:0;padding:18px 14px calc(96px + env(safe-area-inset-bottom));overflow-x:hidden}
   .pageHead{margin:2px 2px 18px}
   .pageHead h1{font-size:26px}
   .pageHead .eyebrow{display:none}
@@ -484,6 +489,9 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
     position:fixed;
     z-index:80;
     left:10px;right:10px;
+    width:auto;
+    max-width:calc(100vw - 20px);
+    overflow:hidden;
     bottom:calc(10px + env(safe-area-inset-bottom));
     min-height:68px;
     padding:7px;
