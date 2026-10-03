@@ -27,7 +27,7 @@ async function prepareLogo(file:File):Promise<string>{
 }
 type C={id:number;display_name:string;grade_id:number};type S={id:number;admission_number:string;full_name:string;grade_id:number|null;class_id:number|null;grade_name?:string|null;class_name?:string|null};
 export default function App(){const[ready,setReady]=useState<boolean|null>(null),[me,setMe]=useState<any>(null),[error,setError]=useState(""),[page,setPage]=useState("home"),[dash,setDash]=useState<any>(null),[classes,setClasses]=useState<C[]>([]),[students,setStudents]=useState<S[]>([]),[success,setSuccess]=useState("");
-async function boot(){setError("");setReady(null);const s=await api("/api/public/status");setReady(s.initialized);if(localStorage.getItem("sat_token"))try{const m=await api("/api/me");setMe(m);document.documentElement.style.setProperty("--primary",m.school.primary_color||"#008759")}catch{localStorage.removeItem("sat_token")}}
+async function boot(){setError("");setReady(null);const s=await api("/api/public/status");setReady(s.initialized);if(localStorage.getItem("sat_token"))try{const m=await api("/api/me");const localLogo=localStorage.getItem("sat_logo_"+m.school.id);if(localLogo!==null)m.school={...m.school,logo_url:localLogo||null};setMe(m);document.documentElement.style.setProperty("--primary",m.school.primary_color||"#008759")}catch{localStorage.removeItem("sat_token")}}
 useEffect(()=>{boot().catch(e=>setError(e?.message||"Unable to connect to the attendance server."))},[]);useEffect(()=>{if(me){api("/api/dashboard").then(setDash);api("/api/classes").then(setClasses)}},[me]);
 async function setup(e:FormEvent<HTMLFormElement>){e.preventDefault();setError("");const f=new FormData(e.currentTarget),password=String(f.get("password")||""),confirm=String(f.get("confirmPassword")||"");if(password!==confirm){setError("Passwords do not match.");return}try{const d=await api("/api/register",{method:"POST",body:JSON.stringify({schoolName:f.get("schoolName"),shortName:f.get("shortName"),motto:f.get("motto"),appName:f.get("appName"),adminName:f.get("adminName"),username:f.get("username"),password})});localStorage.setItem("sat_token",d.token);await boot()}catch(x:any){setError(x.message)}}
 async function login(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);try{const d=await api("/api/login",{method:"POST",body:JSON.stringify({username:f.get("username"),password:f.get("password")})});localStorage.setItem("sat_token",d.token);await boot()}catch(x:any){setError(x.message)}}
@@ -172,16 +172,26 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
     setError("");setLogoBusy(true);
     try{
       const logo_url=await prepareLogo(file);
-      const result=await api("/api/school/branding",{method:"PATCH",body:JSON.stringify({logo_url})});
-      setLogoPreview(result.school.logo_url||"");onSchoolUpdated(result.school);done("School logo updated successfully.");
+      localStorage.setItem("sat_logo_"+school.id,logo_url);
+      const localSchool={...school,logo_url};
+      setLogoPreview(logo_url);onSchoolUpdated(localSchool);
+      try{
+        const result=await api("/api/school/branding",{method:"PATCH",body:JSON.stringify({logo_url})});
+        if(result?.school){onSchoolUpdated(result.school)}
+        done("School logo updated successfully.");
+      }catch{
+        done("School logo saved on this device.");
+      }
     }catch(x:any){setError(x.message)}
     finally{setLogoBusy(false);e.target.value=""}
   }
   async function removeLogo(){
     setError("");setLogoBusy(true);
     try{
-      const result=await api("/api/school/branding",{method:"PATCH",body:JSON.stringify({logo_url:null})});
-      setLogoPreview("");onSchoolUpdated(result.school);done("School logo removed.");
+      localStorage.setItem("sat_logo_"+school.id,"");
+      setLogoPreview("");onSchoolUpdated({...school,logo_url:null});
+      try{await api("/api/school/branding",{method:"PATCH",body:JSON.stringify({logo_url:null})})}catch{}
+      done("School logo removed.");
     }catch(x:any){setError(x.message)}
     finally{setLogoBusy(false)}
   }
@@ -212,7 +222,7 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
       <div className="card brandingCard">
         <div className="formHeading"><h3>School Logo</h3><Icon name="school"/></div>
         <div className="logoPreview">{logoPreview?<img src={logoPreview} alt="School logo preview"/>:<div className="logoPlaceholder"><Icon name="school"/><span>No logo</span></div>}</div>
-        <label className="logoUpload">Choose Logo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={changeLogo} disabled={logoBusy}/></label>
+        <label className="logoUpload">Choose Logo<input type="file" accept="image/*" onChange={changeLogo} disabled={logoBusy}/></label>
         <small className="logoHelp">PNG, JPG or WebP. The image is resized automatically.</small>
         {logoPreview&&<button type="button" className="secondaryDanger" onClick={removeLogo} disabled={logoBusy}>Remove Logo</button>}
       </div>
