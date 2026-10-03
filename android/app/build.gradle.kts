@@ -11,8 +11,8 @@ android {
     applicationId = "com.azeem.maestroattendance"
     minSdk = 24
     targetSdk = 35
-    versionCode = 3
-    versionName = "1.0.2"
+    versionCode = 4
+    versionName = "1.0.3"
 
     val appUrl = (project.findProperty("APP_URL") as String?)
       ?: "https://appassets.androidplatform.net/assets/web/index.html"
