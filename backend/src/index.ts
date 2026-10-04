@@ -518,6 +518,7 @@ export default {
       }
 
       if (path === "/api/attendance" && req.method === "POST") {
+        if (auth.role !== "TEACHER") return fail("Only teachers can submit student attendance.", 403);
         const b = await requestBody(req);
         const classId = Number(b.class_id || 0);
         if (!classId || !await classAllowed(env, auth, classId)) {
@@ -580,13 +581,21 @@ export default {
       }
 
       if (path === "/api/teacher-period-attendance" && req.method === "POST") {
+        if (auth.role !== "TEACHER") return fail("Only teachers can submit teacher attendance.", 403);
         const b = await requestBody(req);
         const classId = Number(b.class_id || 0);
         if (!classId || !await classAllowed(env, auth, classId)) {
           return fail("You do not have permission to submit this class.", 403);
         }
         const date = String(b.date || "").trim();
-        for (const period of Array.isArray(b.periods) ? b.periods : []) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("A valid attendance date is required.");
+        const periods = Array.isArray(b.periods) ? b.periods : [];
+        const allowedStatuses = new Set(["ARRIVED","DELAYED","RELIEF","NO TEACHER PRESENTED"]);
+        if (periods.length !== 9) return fail("Teacher attendance must be recorded for all 9 periods.");
+        if (periods.some((p:any, i:number) => Number(p.period) !== i + 1 || !allowedStatuses.has(String(p.status)))) {
+          return fail("Select a valid teacher attendance status for every period.");
+        }
+        for (const period of periods) {
           await env.DB.prepare(
             `INSERT INTO teacher_period_attendance(school_id,class_id,date,period,status,submitted_by)
              VALUES(?,?,?,?,?,?)
