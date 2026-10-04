@@ -123,9 +123,11 @@ function History(){const[rows,setRows]=useState<any[]>([]);useEffect(()=>{api("/
 function StudentsPage({classes,done}:{classes:C[];done:(message:string)=>void}){
   const[mode,setMode]=useState<"individual"|"bulk">("individual");
   const[grades,setGrades]=useState<any[]>([]);
+  const[teachers,setTeachers]=useState<any[]>([]);
   const[error,setError]=useState("");
   const[bulkText,setBulkText]=useState("");
-  useEffect(()=>{api("/api/grades").then(setGrades).catch(e=>setError(e.message))},[]);
+  async function loadTeachers(){try{setTeachers(await api("/api/teachers"))}catch(e:any){setError(e.message)}}
+  useEffect(()=>{api("/api/grades").then(setGrades).catch(e=>setError(e.message));loadTeachers()},[]);
 
   async function addOne(e:FormEvent<HTMLFormElement>){
     e.preventDefault();setError("");
@@ -253,8 +255,17 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
   }
   async function addTeacher(e:FormEvent<HTMLFormElement>){
     e.preventDefault();setError("");const form=e.currentTarget,f=new FormData(form),classId=Number(f.get("class_id")||0);
-    try{await api("/api/teachers",{method:"POST",body:JSON.stringify({full_name:f.get("full_name"),username:f.get("username"),password:f.get("password"),class_ids:classId?[classId]:[]})});form.reset();done("Teacher added successfully.")}
+    try{await api("/api/teachers",{method:"POST",body:JSON.stringify({full_name:f.get("full_name"),username:f.get("username"),password:f.get("password"),class_ids:classId?[classId]:[]})});await loadTeachers();form.reset();done("Teacher added successfully.")}
     catch(x:any){setError(x.message)}
+  }
+
+  async function resetTeacherPassword(teacherId:number,e:FormEvent<HTMLFormElement>){
+    e.preventDefault();setError("");
+    const form=e.currentTarget,f=new FormData(form),password=String(f.get("password")||"");
+    try{
+      await api("/api/teachers/"+teacherId+"/password",{method:"PATCH",body:JSON.stringify({password})});
+      form.reset();done("Teacher temporary password reset successfully.");
+    }catch(x:any){setError(x.message)}
   }
 
   return <div className="settingsPage">
@@ -274,6 +285,21 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
       <form className="card" onSubmit={addGrade}><div className="formHeading"><h3>Grades</h3><Icon name="school"/></div><input name="name" placeholder="e.g. Grade 10" required/><button>Add Grade</button></form>
       <form className="card" onSubmit={addClass}><div className="formHeading"><h3>Classes <span className="optionalText">Optional</span></h3><Icon name="classes"/></div><label>Grade<select name="grade_id" required><option value="">Select grade</option>{grades.map(g=><option value={g.id} key={g.id}>{g.name}</option>)}</select></label><input name="name" placeholder="Class name, e.g. A" required/><input name="display_name" placeholder="Display name, e.g. 10-A" required/><input name="academic_year" placeholder="Academic year, e.g. 2026"/><button>Add Class</button></form>
       <form className="card" onSubmit={addTeacher}><div className="formHeading"><h3>Teachers</h3><Icon name="profile"/></div><input name="full_name" placeholder="Teacher full name" required/><input name="username" placeholder="Username" required/><input name="password" placeholder="Temporary password" minLength={4} required/><label>Assigned Class <span className="optionalText">Optional</span><select name="class_id"><option value="">No class assigned</option>{classes.map(c=><option value={c.id} key={c.id}>{c.display_name}</option>)}</select></label><button>Add Teacher</button></form>
+    </div>
+    <div className="card sectionCard teacherListCard">
+      <div className="sectionTitle"><div><span className="eyebrow">Teacher accounts</span><h2>Teachers List</h2></div><span className="countPill">{teachers.length} teachers</span></div>
+      <p className="settingsHint">Passwords are not stored in readable form. Use Reset Password to set a new temporary password for a teacher.</p>
+      {teachers.length?teachers.map(t=><div className="teacherAccountRow" key={t.id}>
+        <div className="teacherAccountInfo">
+          <div className="teacherAccountTop"><b>{t.full_name}</b><span className={t.active?"status done":"status pending"}>{t.active?"Active":"Inactive"}</span></div>
+          <span className="teacherMeta">@{t.username}</span>
+          <span className="teacherMeta">{t.class_names?("Class: "+t.class_names):"No class assigned"}</span>
+        </div>
+        <form className="teacherPasswordReset" onSubmit={e=>resetTeacherPassword(t.id,e)}>
+          <input name="password" type="text" minLength={4} placeholder="New temporary password" required/>
+          <button type="submit">Reset Password</button>
+        </form>
+      </div>):<div className="emptyState"><Icon name="profile"/><b>No teachers added</b><span>Teachers you create will appear here.</span></div>}
     </div>
   </div>
 }
