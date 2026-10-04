@@ -208,10 +208,12 @@ function IndividualStudentForm({grades,classes,onSubmit}:{grades:any[];classes:C
 
 function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[];school:any;refresh:()=>void;onSchoolUpdated:(school:any)=>void;done:(message:string)=>void}){
   const[grades,setGrades]=useState<any[]>([]);
+  const[teachers,setTeachers]=useState<any[]>([]);
   const[error,setError]=useState("");
   const[logoPreview,setLogoPreview]=useState<string>(school?.logo_url||"");
   const[logoBusy,setLogoBusy]=useState(false);
-  useEffect(()=>{api("/api/grades").then(setGrades).catch(e=>setError(e.message))},[]);
+  async function loadTeachers(){try{setTeachers(await api("/api/teachers"))}catch(e:any){setError(e.message)}}
+  useEffect(()=>{api("/api/grades").then(setGrades).catch(e=>setError(e.message));loadTeachers()},[]);
   useEffect(()=>{setLogoPreview(school?.logo_url||"")},[school?.logo_url]);
 
   async function changeLogo(e:any){
