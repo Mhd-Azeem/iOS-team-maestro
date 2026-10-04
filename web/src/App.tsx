@@ -35,10 +35,10 @@ async function logout(){try{await api("/api/logout",{method:"POST"})}catch{}loca
 async function chooseClass(id:number){setStudents(id?await api("/api/students?class_id="+id):[])}
 if(ready===null)return <div className="splash">{error?<div><h2>Connection problem</h2><p>{error}</p><button onClick={()=>boot().catch(e=>setError(e?.message||"Unable to connect to the attendance server."))}>Retry</button></div>:<div>Loading…</div>}</div>;
 if(!me)return <AuthPortal initialized={!!ready} error={error} onLogin={login} onRegister={setup}/>;
-const isAdmin=["SUPER_ADMIN","SCHOOL_ADMIN","SECTION_HEAD"].includes(me.user.role);const nav=[["home","Home","home"],["attendance","Attendance","check"],["history","History","history"],...(isAdmin?[["students","Students","students"],["settings","Settings","settings"]]:[]),["profile","Profile","profile"]];
+const isAdmin=["SUPER_ADMIN","SCHOOL_ADMIN","SECTION_HEAD"].includes(me.user.role);const isTeacher=me.user.role==="TEACHER";const nav=[["home","Home","home"],...(isTeacher?[["attendance","Attendance","check"]]:[]),["history","History","history"],...(isAdmin?[["students","Students","students"],["settings","Settings","settings"]]:[]),["profile","Profile","profile"]];
 return <div className="shell"><aside><div className="school"><div className="schoolmark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo"/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div><b>{me.school.name}</b><small>{me.school.app_name}</small></div></div><nav>{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</nav><button className="logoutBtn" onClick={logout}><Icon name="logout"/><span>Logout</span></button></aside><main><header className="pageHead"><div><span className="eyebrow">{me.school.short_name||"School Attendance"}</span><h1>{page[0].toUpperCase()+page.slice(1)}</h1><p>{me.user.full_name} · {me.user.role.replaceAll("_"," ")}</p></div><div className="avatar">{me.user.full_name.slice(0,1).toUpperCase()}</div></header>{error&&<div className="error">{error}</div>}
 {page==="home"&&<><section className="hero"><div className="heroMark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo"/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div className="heroText"><span className="eyebrow light">Welcome back</span><h2>{me.school.app_name}</h2><p>{me.school.motto||me.school.name}</p></div><div className="heroBadge"><Icon name="calendar"/><span>{new Date().toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}</span></div></section><div className="stats"><Card t="Total Students" v={dash?.totalStudents||0} icon="students"/><Card t="Present Today" v={dash?.presentToday||0} icon="present"/><Card t="Absent Today" v={dash?.absentToday||0} icon="absent"/><Card t="Submitted" v={dash?(dash.submitted+"/"+dash.totalClasses):"0/0"} icon="classes"/></div><div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Today</span><h3>Class Status</h3></div><span className="countPill">{classes.length} classes</span></div>{classes.length?classes.map(c=>{const pending=dash?.pending?.some((x:any)=>x.id===c.id);return <div className="row classRow" key={c.id}><div className="classIdentity"><span className="classDot">{c.display_name.slice(0,2)}</span><span>{c.display_name}</span></div><span className={pending?"status pending":"status done"}>{pending?"Not submitted":"Submitted"}</span></div>}):<div className="emptyState"><Icon name="classes"/><b>No classes yet</b><span>Set up grades and classes from Settings.</span></div>}</div></>}
-{page==="attendance"&&<div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Daily register</span><h2>Student Attendance</h2></div><div className="sectionIcon"><Icon name="check"/></div></div><label>Choose class<select onChange={e=>chooseClass(Number(e.target.value))}><option value="">Select a class</option>{classes.map(c=><option value={c.id} key={c.id}>{c.display_name}</option>)}</select></label><Attendance students={students} classes={classes} done={()=>{setSuccess("Attendance has been saved.");api("/api/dashboard").then(setDash)}}/></div>}
+{page==="attendance"&&isTeacher&&<TeacherAttendancePortal classes={classes} students={students} chooseClass={chooseClass} done={m=>{setSuccess(m);api("/api/dashboard").then(setDash)}}/>}
 {page==="history"&&<History/>}{page==="students"&&isAdmin&&<StudentsPage classes={classes} done={m=>{setSuccess(m);api("/api/dashboard").then(setDash)}}/>}{page==="settings"&&isAdmin&&<SettingsPage classes={classes} school={me.school} refresh={()=>api("/api/classes").then(setClasses)} onSchoolUpdated={school=>setMe((current:any)=>({...current,school}))} done={m=>setSuccess(m)}/>}
 {page==="profile"&&<div className="card profileCard"><div className="profileAvatar">{me.user.full_name.slice(0,1).toUpperCase()}</div><h2>{me.user.full_name}</h2><p className="muted">@{me.user.username}</p><span className="rolePill">{me.user.role.replaceAll("_"," ")}</span><button className="secondaryDanger" onClick={logout}><Icon name="logout"/> Logout</button></div>}</main><div className="bottom">{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</div>{success&&<div className="modalbg"><div className="modal"><b>✓</b><h2>Submitted Successfully</h2><p>{success}</p><button onClick={()=>setSuccess("")}>OK</button></div></div>}</div>}
 function AuthPortal({initialized,error,onLogin,onRegister}:{initialized:boolean;error:string;onLogin:(e:FormEvent<HTMLFormElement>)=>void;onRegister:(e:FormEvent<HTMLFormElement>)=>void}){
@@ -73,6 +73,51 @@ function AuthPortal({initialized,error,onLogin,onRegister}:{initialized:boolean;
   </div>
 }
 function Card({t,v,icon}:{t:string,v:any,icon:string}){return <div className="card stat"><div className="statTop"><div className="statIcon"><Icon name={icon}/></div><span>{t}</span></div><strong>{v}</strong><small>Today</small></div>}
+function TeacherAttendancePortal({classes,students,chooseClass,done}:{classes:C[];students:S[];chooseClass:(id:number)=>void;done:(message:string)=>void}){
+  const[mode,setMode]=useState<"student"|"teacher">("student");
+  const[selectedClass,setSelectedClass]=useState(0);
+  function selectClass(id:number){setSelectedClass(id);chooseClass(id)}
+  return <div className="teacherAttendancePage">
+    <div className="card sectionCard">
+      <div className="sectionTitle"><div><span className="eyebrow">Teacher only</span><h2>Attendance</h2></div><div className="sectionIcon"><Icon name="check"/></div></div>
+      <p className="settingsHint">Only teachers can submit attendance. Choose whether you are marking student attendance or teacher period attendance.</p>
+      <div className="segmented attendanceTabs">
+        <button type="button" className={mode==="student"?"active":""} onClick={()=>setMode("student")}>Student Attendance</button>
+        <button type="button" className={mode==="teacher"?"active":""} onClick={()=>setMode("teacher")}>Teacher Attendance</button>
+      </div>
+    </div>
+    <div className="card sectionCard">
+      <label>Choose class<select value={selectedClass||""} onChange={e=>selectClass(Number(e.target.value))}><option value="">Select a class</option>{classes.map(c=><option value={c.id} key={c.id}>{c.display_name}</option>)}</select></label>
+      {mode==="student"
+        ? <Attendance students={students} classes={classes} done={()=>done("Student attendance has been saved.")}/>
+        : <TeacherPeriodAttendance classId={selectedClass} done={()=>done("Teacher attendance has been saved.")}/>}
+    </div>
+  </div>
+}
+
+function TeacherPeriodAttendance({classId,done}:{classId:number;done:()=>void}){
+  const[error,setError]=useState("");
+  const statuses=["ARRIVED","DELAYED","RELIEF","NO TEACHER PRESENTED"];
+  async function send(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();setError("");
+    if(!classId){setError("Select a class first.");return}
+    const form=e.currentTarget,f=new FormData(form);
+    const periods=Array.from({length:9},(_,i)=>({period:i+1,status:String(f.get("period_"+(i+1))||"")}));
+    if(periods.some(p=>!p.status)){setError("Select a status for every period.");return}
+    try{
+      await api("/api/teacher-period-attendance",{method:"POST",body:JSON.stringify({class_id:classId,date:f.get("date"),periods})});
+      done();
+    }catch(x:any){setError(x.message)}
+  }
+  if(!classId)return <div className="emptyState"><Icon name="classes"/><b>Select a class</b><span>Choose your assigned class above to mark teacher attendance.</span></div>;
+  return <form className="attendanceForm teacherPeriodForm" onSubmit={send}>
+    <label>Date<input type="date" name="date" defaultValue={new Date().toISOString().slice(0,10)} required/></label>
+    {error&&<div className="error">{error}</div>}
+    <div className="periodList">{Array.from({length:9},(_,i)=><label className="periodRow" key={i+1}><span>Period {i+1}</span><select name={"period_"+(i+1)} required><option value="">Select status</option>{statuses.map(s=><option value={s} key={s}>{s.replaceAll("_"," ")}</option>)}</select></label>)}</div>
+    <button className="primaryAction"><Icon name="check"/>Submit Teacher Attendance</button>
+  </form>
+}
+
 function Attendance({students,classes,done}:{students:S[];classes:C[];done:()=>void}){const[classId,setClassId]=useState(0);useEffect(()=>{if(students[0]?.class_id)setClassId(students[0].class_id)},[students]);async function send(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!classId)return;const f=e.currentTarget,records=students.map(s=>({student_id:s.id,status:String((f.elements.namedItem("s"+s.id) as RadioNodeList).value||"PRESENT")}));await api("/api/attendance",{method:"POST",body:JSON.stringify({class_id:classId,date:new FormData(f).get("date"),records})});done()}return students.length?<form className="attendanceForm" onSubmit={send}><input type="hidden" value={classId} readOnly/><label>Date<input type="date" name="date" defaultValue={new Date().toISOString().slice(0,10)}/></label><div className="studentList">{students.map(s=><div className="student" key={s.id}><div className="studentInfo"><span className="studentAvatar">{s.full_name.slice(0,1).toUpperCase()}</span><div><b>{s.full_name}</b><small>{s.admission_number}</small></div></div><div className="attendanceChoice"><label className="presentChoice"><input type="radio" name={"s"+s.id} value="PRESENT" defaultChecked/><span>Present</span></label><label className="absentChoice"><input type="radio" name={"s"+s.id} value="ABSENT"/><span>Absent</span></label></div></div>)}</div><button className="primaryAction"><Icon name="check"/>Submit Attendance</button></form>:<div className="emptyState"><Icon name="students"/><b>Select a class</b><span>Choose a class above to load the student list.</span></div>}
 function History(){const[rows,setRows]=useState<any[]>([]);useEffect(()=>{api("/api/attendance/history").then(setRows)},[]);return <div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Records</span><h2>Attendance History</h2></div><div className="sectionIcon"><Icon name="history"/></div></div>{rows.length?rows.map(r=><div className="row historyRow" key={r.id}><div><b>{r.class_name}</b><small>{r.date} · {r.submitted_by}</small></div><div className="historyCounts"><span className="miniGood">{r.present_count||0} P</span><span className="miniBad">{r.absent_count||0} A</span></div></div>):<div className="emptyState"><Icon name="history"/><b>No history yet</b><span>Submitted attendance will appear here.</span></div>}</div>}
 function StudentsPage({classes,done}:{classes:C[];done:(message:string)=>void}){
