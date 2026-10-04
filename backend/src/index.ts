@@ -478,7 +478,16 @@ export default {
       if (path === "/api/teachers" && req.method === "GET") {
         if (!isAdmin(auth)) return fail("You do not have permission to view teachers.", 403);
         const rows = await env.DB.prepare(
-          "SELECT id,full_name,username,active FROM users WHERE school_id=? AND role='TEACHER' ORDER BY full_name"
+          `SELECT u.id,u.full_name,u.username,u.active,
+                  COALESCE(GROUP_CONCAT(c.display_name, ', '),'') class_names
+           FROM users u
+           LEFT JOIN teacher_class_assignments t
+             ON t.teacher_id=u.id AND t.school_id=u.school_id
+           LEFT JOIN classes c
+             ON c.id=t.class_id AND c.school_id=u.school_id AND c.active=1
+           WHERE u.school_id=? AND u.role='TEACHER'
+           GROUP BY u.id,u.full_name,u.username,u.active
+           ORDER BY u.full_name`
         ).bind(auth.schoolId).all();
         return json(rows.results);
       }
@@ -515,6 +524,32 @@ export default {
           ).bind(auth.schoolId, teacherId, classId, auth.schoolId).run();
         }
         return json({ id: teacherId }, 201);
+      }
+
+      const teacherPasswordMatch = path.match(/^\/api\/teachers\/(\d+)\/password$/);
+      if (teacherPasswordMatch && req.method === "PATCH") {
+        if (!isAdmin(auth)) return fail("You do not have permission to reset teacher passwords.", 403);
+        const teacherId = Number(teacherPasswordMatch[1]);
+        const b = await requestBody(req);
+        const password = String(b.password || "");
+        if (password.length < 4) return fail("Temporary password must be at least 4 characters.");
+
+        const teacher = await env.DB.prepare(
+          "SELECT id FROM users WHERE id=? AND school_id=? AND role='TEACHER'"
+        ).bind(teacherId, auth.schoolId).first();
+        if (!teacher) return fail("Teacher not found.", 404);
+
+        const salt = hex(crypto.getRandomValues(new Uint8Array(16)));
+        const hash = await passwordHash(password, salt);
+        await env.DB.prepare(
+          "UPDATE users SET password_hash=?,password_salt=?,force_password_change=1 WHERE id=? AND school_id=?"
+        ).bind(hash, salt, teacherId, auth.schoolId).run();
+
+        await env.DB.prepare(
+          "DELETE FROM sessions WHERE user_id=? AND school_id=?"
+        ).bind(teacherId, auth.schoolId).run();
+
+        return json({ ok: true });
       }
 
       if (path === "/api/attendance" && req.method === "POST") {
