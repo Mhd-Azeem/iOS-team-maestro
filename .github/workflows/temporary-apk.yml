@@ -1,13 +1,6 @@
-name: Temporary APK
+name: Temporary APK (Manual Only)
 
 on:
-  push:
-    branches:
-      - "claude/team-maestro-exam-ios-yc6u56"
-    paths:
-      - "android/**"
-      - "web/**"
-      - ".github/workflows/temporary-apk.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,52 +8,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Build and bundle web app
-        working-directory: web
-        run: |
-          npm install --no-audit --no-fund
-          npm run build
-          rm -rf ../android/app/src/main/assets/web
-          mkdir -p ../android/app/src/main/assets/web
-          cp -R dist/. ../android/app/src/main/assets/web/
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
-
-      - name: Generate Gradle wrapper
-        working-directory: android
-        run: gradle wrapper
-
-      - name: Build installable temporary APK
-        working-directory: android
-        run: ./gradlew assembleDebug
-
-      - name: Prepare APK
-        run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk SchoolAttendance-Temporary.apk
-
-      - name: Publish temporary APK prerelease
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: temp-v1.0.0-${{ github.run_number }}
-          name: Temporary School Attendance APK
-          prerelease: true
-          body: |
-            Temporary installable APK built with Android's debug signing key.
-            No repository signing secrets are required.
-            This build is for testing only. Uninstall it before installing the future permanently signed production APK.
-          files: SchoolAttendance-Temporary.apk
+      - run: echo "Temporary APK builds are disabled. Use the stable Android Release workflow."
