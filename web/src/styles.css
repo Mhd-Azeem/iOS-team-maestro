@@ -688,3 +688,25 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
   background:var(--primary-soft);color:var(--primary-strong);font-weight:800
 }
 .logoHelp{display:block;color:var(--muted);line-height:1.45}
+
+
+.teacherAttendancePage{display:grid;gap:16px}
+.attendanceTabs{margin-top:16px}
+.periodList{display:grid;gap:10px;margin:14px 0 18px}
+.periodRow{
+  margin:0;
+  display:grid;
+  grid-template-columns:110px minmax(0,1fr);
+  align-items:center;
+  gap:12px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff;
+}
+.periodRow>span{font-weight:850;color:#35443d}
+.periodRow select{min-width:0}
+@media(max-width:520px){
+  .attendanceTabs{grid-template-columns:1fr}
+  .periodRow{grid-template-columns:1fr;gap:7px}
+}
