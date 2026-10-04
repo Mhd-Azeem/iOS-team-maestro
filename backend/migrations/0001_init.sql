@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS teacher_period_attendance (
 CREATE TABLE IF NOT EXISTS school_settings (
   school_id INTEGER PRIMARY KEY,
   academic_year TEXT,
-  period_count INTEGER NOT NULL DEFAULT 8,
+  period_count INTEGER NOT NULL DEFAULT 9,
   allow_attendance_edit INTEGER NOT NULL DEFAULT 1,
   submission_deadline TEXT,
   teacher_statuses TEXT NOT NULL DEFAULT '["ARRIVED","DELAYED","RELIEF","NO TEACHER PRESENTED"]',
