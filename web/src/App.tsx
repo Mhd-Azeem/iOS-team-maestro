@@ -27,7 +27,7 @@ async function prepareLogo(file:File):Promise<string>{
 }
 type C={id:number;display_name:string;grade_id:number};type S={id:number;admission_number:string;full_name:string;grade_id:number|null;class_id:number|null;grade_name?:string|null;class_name?:string|null};
 export default function App(){const[ready,setReady]=useState<boolean|null>(null),[me,setMe]=useState<any>(null),[error,setError]=useState(""),[page,setPage]=useState("home"),[dash,setDash]=useState<any>(null),[classes,setClasses]=useState<C[]>([]),[students,setStudents]=useState<S[]>([]),[success,setSuccess]=useState("");
-async function boot(){setError("");setReady(null);const s=await api("/api/public/status");setReady(s.initialized);if(localStorage.getItem("sat_token"))try{const m=await api("/api/me");const localLogo=localStorage.getItem("sat_logo_"+m.school.id);if(localLogo!==null)m.school={...m.school,logo_url:localLogo||null};setMe(m);document.documentElement.style.setProperty("--primary",m.school.primary_color||"#008759")}catch{localStorage.removeItem("sat_token")}}
+async function boot(){setError("");setReady(null);const s=await api("/api/public/status");setReady(s.initialized);if(localStorage.getItem("sat_token"))try{const m=await api("/api/me");const localLogo=localStorage.getItem("sat_logo_"+m.school.id);const logoScale=Number(localStorage.getItem("sat_logo_scale_"+m.school.id)||"100");if(localLogo!==null)m.school={...m.school,logo_url:localLogo||null};m.school={...m.school,logo_scale:logoScale};setMe(m);document.documentElement.style.setProperty("--primary",m.school.primary_color||"#008759")}catch{localStorage.removeItem("sat_token")}}
 useEffect(()=>{boot().catch(e=>setError(e?.message||"Unable to connect to the attendance server."))},[]);useEffect(()=>{if(me){api("/api/dashboard").then(setDash);api("/api/classes").then(setClasses)}},[me]);useEffect(()=>{document.documentElement.scrollLeft=0;document.body.scrollLeft=0;window.scrollTo({left:0,top:window.scrollY,behavior:"auto"})},[page]);
 async function setup(e:FormEvent<HTMLFormElement>){e.preventDefault();setError("");const f=new FormData(e.currentTarget),password=String(f.get("password")||""),confirm=String(f.get("confirmPassword")||"");if(password!==confirm){setError("Passwords do not match.");return}try{const d=await api("/api/register",{method:"POST",body:JSON.stringify({schoolName:f.get("schoolName"),shortName:f.get("shortName"),motto:f.get("motto"),appName:f.get("appName"),adminName:f.get("adminName"),username:f.get("username"),password})});localStorage.setItem("sat_token",d.token);await boot()}catch(x:any){setError(x.message)}}
 async function login(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);try{const d=await api("/api/login",{method:"POST",body:JSON.stringify({username:f.get("username"),password:f.get("password")})});localStorage.setItem("sat_token",d.token);await boot()}catch(x:any){setError(x.message)}}
@@ -36,8 +36,8 @@ async function chooseClass(id:number){setStudents(id?await api("/api/students?cl
 if(ready===null)return <div className="splash">{error?<div><h2>Connection problem</h2><p>{error}</p><button onClick={()=>boot().catch(e=>setError(e?.message||"Unable to connect to the attendance server."))}>Retry</button></div>:<div>Loading…</div>}</div>;
 if(!me)return <AuthPortal initialized={!!ready} error={error} onLogin={login} onRegister={setup}/>;
 const isAdmin=["SUPER_ADMIN","SCHOOL_ADMIN","SECTION_HEAD"].includes(me.user.role);const isTeacher=me.user.role==="TEACHER";const nav=[["home","Home","home"],...(isTeacher?[["attendance","Attendance","check"]]:[]),["history","History","history"],...(isAdmin?[["students","Students","students"],["settings","Settings","settings"]]:[]),["profile","Profile","profile"]];
-return <div className="shell"><aside><div className="school"><div className="schoolmark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo"/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div><b>{me.school.name}</b><small>{me.school.app_name}</small></div></div><nav>{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</nav><button className="logoutBtn" onClick={logout}><Icon name="logout"/><span>Logout</span></button></aside><main><header className="pageHead"><div><span className="eyebrow">{me.school.short_name||"School Attendance"}</span><h1>{page[0].toUpperCase()+page.slice(1)}</h1><p>{me.user.full_name} · {me.user.role.replaceAll("_"," ")}</p></div><div className="avatar">{me.user.full_name.slice(0,1).toUpperCase()}</div></header>{error&&<div className="error">{error}</div>}
-{page==="home"&&<><section className="hero"><div className="heroMark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo"/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div className="heroText"><span className="eyebrow light">Welcome back</span><h2>{me.school.app_name}</h2><p>{me.school.motto||me.school.name}</p></div><div className="heroBadge"><Icon name="calendar"/><span>{new Date().toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}</span></div></section><div className="stats"><Card t="Total Students" v={dash?.totalStudents||0} icon="students"/><Card t="Present Today" v={dash?.presentToday||0} icon="present"/><Card t="Absent Today" v={dash?.absentToday||0} icon="absent"/><Card t="Submitted" v={dash?(dash.submitted+"/"+dash.totalClasses):"0/0"} icon="classes"/></div><div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Today</span><h3>Class Status</h3></div><span className="countPill">{classes.length} classes</span></div>{classes.length?classes.map(c=>{const pending=dash?.pending?.some((x:any)=>x.id===c.id);return <div className="row classRow" key={c.id}><div className="classIdentity"><span className="classDot">{c.display_name.slice(0,2)}</span><span>{c.display_name}</span></div><span className={pending?"status pending":"status done"}>{pending?"Not submitted":"Submitted"}</span></div>}):<div className="emptyState"><Icon name="classes"/><b>No classes yet</b><span>Set up grades and classes from Settings.</span></div>}</div></>}
+return <div className="shell"><aside><div className="school"><div className="schoolmark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo" style={{width:(me.school.logo_scale||100)+"%",height:(me.school.logo_scale||100)+"%"}}/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div><b>{me.school.name}</b><small>{me.school.app_name}</small></div></div><nav>{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</nav><button className="logoutBtn" onClick={logout}><Icon name="logout"/><span>Logout</span></button></aside><main><header className="pageHead"><div><span className="eyebrow">{me.school.short_name||"School Attendance"}</span><h1>{page[0].toUpperCase()+page.slice(1)}</h1><p>{me.user.full_name} · {me.user.role.replaceAll("_"," ")}</p></div><div className="avatar">{me.user.full_name.slice(0,1).toUpperCase()}</div></header>{error&&<div className="error">{error}</div>}
+{page==="home"&&<><section className="hero"><div className="heroMark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo" style={{width:(me.school.logo_scale||100)+"%",height:(me.school.logo_scale||100)+"%"}}/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div className="heroText"><span className="eyebrow light">Welcome back</span><h2>{me.school.app_name}</h2><p>{me.school.motto||me.school.name}</p></div><div className="heroBadge"><Icon name="calendar"/><span>{new Date().toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}</span></div></section><div className="stats"><Card t="Total Students" v={dash?.totalStudents||0} icon="students"/><Card t="Present Today" v={dash?.presentToday||0} icon="present"/><Card t="Absent Today" v={dash?.absentToday||0} icon="absent"/><Card t="Submitted" v={dash?(dash.submitted+"/"+dash.totalClasses):"0/0"} icon="classes"/></div><div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Today</span><h3>Class Status</h3></div><span className="countPill">{classes.length} classes</span></div>{classes.length?classes.map(c=>{const pending=dash?.pending?.some((x:any)=>x.id===c.id);return <div className="row classRow" key={c.id}><div className="classIdentity"><span className="classDot">{c.display_name.slice(0,2)}</span><span>{c.display_name}</span></div><span className={pending?"status pending":"status done"}>{pending?"Not submitted":"Submitted"}</span></div>}):<div className="emptyState"><Icon name="classes"/><b>No classes yet</b><span>Set up grades and classes from Settings.</span></div>}</div></>}
 {page==="attendance"&&isTeacher&&<TeacherAttendancePortal classes={classes} students={students} chooseClass={chooseClass} done={m=>{setSuccess(m);api("/api/dashboard").then(setDash)}}/>}
 {page==="history"&&<History/>}{page==="students"&&isAdmin&&<StudentsPage classes={classes} done={m=>{setSuccess(m);api("/api/dashboard").then(setDash)}}/>}{page==="settings"&&isAdmin&&<SettingsPage classes={classes} school={me.school} refresh={()=>api("/api/classes").then(setClasses)} onSchoolUpdated={school=>setMe((current:any)=>({...current,school}))} done={m=>setSuccess(m)}/>}
 {page==="profile"&&<div className="card profileCard"><div className="profileAvatar">{me.user.full_name.slice(0,1).toUpperCase()}</div><h2>{me.user.full_name}</h2><p className="muted">@{me.user.username}</p><span className="rolePill">{me.user.role.replaceAll("_"," ")}</span><button className="secondaryDanger" onClick={logout}><Icon name="logout"/> Logout</button></div>}</main><div className="bottom">{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</div>{success&&<div className="modalbg"><div className="modal"><b>✓</b><h2>Submitted Successfully</h2><p>{success}</p><button onClick={()=>setSuccess("")}>OK</button></div></div>}</div>}
@@ -212,9 +212,26 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
   const[error,setError]=useState("");
   const[logoPreview,setLogoPreview]=useState<string>(school?.logo_url||"");
   const[logoBusy,setLogoBusy]=useState(false);
+  const[logoScale,setLogoScale]=useState<number>(Number(school?.logo_scale||100));
+  const[gradeInput,setGradeInput]=useState("");
+  const[classInput,setClassInput]=useState("");
+
+  async function loadGrades(){try{setGrades(await api("/api/grades"))}catch(e:any){setError(e.message)}}
   async function loadTeachers(){try{setTeachers(await api("/api/teachers"))}catch(e:any){setError(e.message)}}
-  useEffect(()=>{api("/api/grades").then(setGrades).catch(e=>setError(e.message));loadTeachers()},[]);
-  useEffect(()=>{setLogoPreview(school?.logo_url||"")},[school?.logo_url]);
+  useEffect(()=>{loadGrades();loadTeachers()},[]);
+  useEffect(()=>{
+    setLogoPreview(school?.logo_url||"");
+    const saved=Number(localStorage.getItem("sat_logo_scale_"+school.id)||school?.logo_scale||100);
+    setLogoScale(Math.min(140,Math.max(40,saved)));
+  },[school?.id,school?.logo_url]);
+
+  function normalizedGrade(value:string){
+    const v=value.trim();
+    if(!v)return "";
+    return /^grade\s+/i.test(v)?v:"Grade "+v;
+  }
+  const previewGrade=normalizedGrade(gradeInput)||"Grade 10";
+  const previewOutput=previewGrade+(classInput.trim()?"-"+classInput.trim():"");
 
   async function changeLogo(e:any){
     const file=e.target.files?.[0];if(!file)return;
@@ -222,11 +239,11 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
     try{
       const logo_url=await prepareLogo(file);
       localStorage.setItem("sat_logo_"+school.id,logo_url);
-      const localSchool={...school,logo_url};
+      const localSchool={...school,logo_url,logo_scale:logoScale};
       setLogoPreview(logo_url);onSchoolUpdated(localSchool);
       try{
         const result=await api("/api/school/branding",{method:"PATCH",body:JSON.stringify({logo_url})});
-        if(result?.school){onSchoolUpdated(result.school)}
+        if(result?.school){onSchoolUpdated({...result.school,logo_scale:logoScale})}
         done("School logo updated successfully.");
       }catch{
         done("School logo saved on this device.");
@@ -234,27 +251,49 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
     }catch(x:any){setError(x.message)}
     finally{setLogoBusy(false);e.target.value=""}
   }
+  function resizeLogo(value:number){
+    const size=Math.min(140,Math.max(40,value));
+    setLogoScale(size);
+    localStorage.setItem("sat_logo_scale_"+school.id,String(size));
+    onSchoolUpdated({...school,logo_url:logoPreview||school.logo_url,logo_scale:size});
+  }
   async function removeLogo(){
     setError("");setLogoBusy(true);
     try{
       localStorage.setItem("sat_logo_"+school.id,"");
-      setLogoPreview("");onSchoolUpdated({...school,logo_url:null});
+      setLogoPreview("");onSchoolUpdated({...school,logo_url:null,logo_scale:logoScale});
       try{await api("/api/school/branding",{method:"PATCH",body:JSON.stringify({logo_url:null})})}catch{}
       done("School logo removed.");
     }catch(x:any){setError(x.message)}
     finally{setLogoBusy(false)}
   }
 
-  async function addGrade(e:FormEvent<HTMLFormElement>){
-    e.preventDefault();setError("");const form=e.currentTarget,f=new FormData(form);
-    try{await api("/api/grades",{method:"POST",body:JSON.stringify({name:f.get("name")})});setGrades(await api("/api/grades"));form.reset();done("Grade added successfully.")}
-    catch(x:any){setError(x.message)}
+  async function addGradeWithOptionalClass(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();setError("");
+    const gradeName=normalizedGrade(gradeInput);
+    const className=classInput.trim();
+    if(!gradeName){setError("Grade is required.");return}
+    try{
+      let currentGrades=grades;
+      let grade=currentGrades.find((g:any)=>String(g.name).toLowerCase()===gradeName.toLowerCase());
+      if(!grade){
+        const created=await api("/api/grades",{method:"POST",body:JSON.stringify({name:gradeName})});
+        await loadGrades();
+        grade={id:created.id,name:gradeName};
+      }
+      if(className){
+        await api("/api/classes",{method:"POST",body:JSON.stringify({
+          grade_id:Number(grade.id),
+          name:className,
+          display_name:gradeName+"-"+className
+        })});
+        refresh();
+      }
+      setGradeInput("");setClassInput("");
+      done(className?"Grade and class added successfully.":"Grade added successfully.");
+    }catch(x:any){setError(x.message)}
   }
-  async function addClass(e:FormEvent<HTMLFormElement>){
-    e.preventDefault();setError("");const form=e.currentTarget,f=new FormData(form);
-    try{await api("/api/classes",{method:"POST",body:JSON.stringify({grade_id:Number(f.get("grade_id")),name:f.get("name"),display_name:f.get("display_name"),academic_year:f.get("academic_year")})});refresh();form.reset();done("Class added successfully.")}
-    catch(x:any){setError(x.message)}
-  }
+
   async function addTeacher(e:FormEvent<HTMLFormElement>){
     e.preventDefault();setError("");const form=e.currentTarget,f=new FormData(form),classId=Number(f.get("class_id")||0);
     try{await api("/api/teachers",{method:"POST",body:JSON.stringify({full_name:f.get("full_name"),username:f.get("username"),password:f.get("password"),class_ids:classId?[classId]:[]})});await loadTeachers();form.reset();done("Teacher added successfully.")}
@@ -273,35 +312,60 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
   return <div className="settingsPage">
     <div className="card sectionCard">
       <div className="sectionTitle"><div><span className="eyebrow">Administration</span><h2>Settings</h2></div><div className="sectionIcon"><Icon name="settings"/></div></div>
-      <p className="settingsHint">Manage school structure and teacher accounts here. Grade and class setup is optional, but every class you create must belong to a grade. Student addition is kept separately under Students.</p>
+      <p className="settingsHint">Tap a section to expand it. Add grades and optional classes together, manage the school logo, and manage teacher accounts.</p>
       {error&&<div className="error">{error}</div>}
     </div>
-    <div className="settingsGrid">
-      <div className="card brandingCard">
-        <div className="formHeading"><h3>School Logo</h3><Icon name="school"/></div>
-        <div className="logoPreview">{logoPreview?<img src={logoPreview} alt="School logo preview"/>:<div className="logoPlaceholder"><Icon name="school"/><span>No logo</span></div>}</div>
-        <label className="logoUpload">Choose Logo<input type="file" accept="image/*" onChange={changeLogo} disabled={logoBusy}/></label>
-        <small className="logoHelp">PNG, JPG or WebP. The image is resized automatically.</small>
-        {logoPreview&&<button type="button" className="secondaryDanger" onClick={removeLogo} disabled={logoBusy}>Remove Logo</button>}
-      </div>
-      <form className="card" onSubmit={addGrade}><div className="formHeading"><h3>Grades</h3><Icon name="school"/></div><input name="name" placeholder="e.g. Grade 10" required/><button>Add Grade</button></form>
-      <form className="card" onSubmit={addClass}><div className="formHeading"><h3>Classes <span className="optionalText">Optional</span></h3><Icon name="classes"/></div><label>Grade<select name="grade_id" required><option value="">Select grade</option>{grades.map(g=><option value={g.id} key={g.id}>{g.name}</option>)}</select></label><input name="name" placeholder="Class name, e.g. A" required/><input name="display_name" placeholder="Display name, e.g. 10-A" required/><input name="academic_year" placeholder="Academic year, e.g. 2026"/><button>Add Class</button></form>
-      <form className="card" onSubmit={addTeacher}><div className="formHeading"><h3>Teachers</h3><Icon name="profile"/></div><input name="full_name" placeholder="Teacher full name" required/><input name="username" placeholder="Username" required/><input name="password" placeholder="Temporary password" minLength={4} required/><label>Assigned Class <span className="optionalText">Optional</span><select name="class_id"><option value="">No class assigned</option>{classes.map(c=><option value={c.id} key={c.id}>{c.display_name}</option>)}</select></label><button>Add Teacher</button></form>
-    </div>
-    <div className="card sectionCard teacherListCard">
-      <div className="sectionTitle"><div><span className="eyebrow">Teacher accounts</span><h2>Teachers List</h2></div><span className="countPill">{teachers.length} teachers</span></div>
-      <p className="settingsHint">Passwords are not stored in readable form. Use Reset Password to set a new temporary password for a teacher.</p>
-      {teachers.length?teachers.map(t=><div className="teacherAccountRow" key={t.id}>
-        <div className="teacherAccountInfo">
-          <div className="teacherAccountTop"><b>{t.full_name}</b><span className={t.active?"status done":"status pending"}>{t.active?"Active":"Inactive"}</span></div>
-          <span className="teacherMeta">@{t.username}</span>
-          <span className="teacherMeta">{t.class_names?("Class: "+t.class_names):"No class assigned"}</span>
+
+    <div className="settingsAccordionList">
+      <details className="settingsAccordion">
+        <summary><span><Icon name="school"/>School Logo</span><b>⌄</b></summary>
+        <div className="accordionBody brandingCard">
+          <div className="logoPreview">{logoPreview?<img src={logoPreview} alt="School logo preview" style={{width:logoScale+"px",height:logoScale+"px"}}/>:<div className="logoPlaceholder"><Icon name="school"/><span>No logo</span></div>}</div>
+          <label className="logoUpload">Choose Logo<input type="file" accept="image/*" onChange={changeLogo} disabled={logoBusy}/></label>
+          {logoPreview&&<label className="logoSizeControl">Logo Size <span>{logoScale}%</span><input type="range" min="40" max="140" step="5" value={logoScale} onChange={e=>resizeLogo(Number(e.target.value))}/></label>}
+          <small className="logoHelp">Choose the image, then drag the size slider until the logo looks right.</small>
+          {logoPreview&&<button type="button" className="secondaryDanger" onClick={removeLogo} disabled={logoBusy}>Remove Logo</button>}
         </div>
-        <form className="teacherPasswordReset" onSubmit={e=>resetTeacherPassword(t.id,e)}>
-          <input name="password" type="text" minLength={4} placeholder="New temporary password" required/>
-          <button type="submit">Reset Password</button>
+      </details>
+
+      <details className="settingsAccordion">
+        <summary><span><Icon name="classes"/>Add Grade</span><b>⌄</b></summary>
+        <form className="accordionBody gradeClassForm" onSubmit={addGradeWithOptionalClass}>
+          <label className="inlineSettingRow"><span>Grade</span><input value={gradeInput} onChange={e=>setGradeInput(e.target.value)} placeholder="eg: 10" required/></label>
+          <label className="inlineSettingRow"><span>Class</span><input value={classInput} onChange={e=>setClassInput(e.target.value)} placeholder="eg: A (Optional)"/></label>
+          <div className="gradeClassPreview"><small>Output</small><strong>{previewOutput}</strong></div>
+          <button type="submit">Add Grade{classInput.trim()?" & Class":""}</button>
         </form>
-      </div>):<div className="emptyState"><Icon name="profile"/><b>No teachers added</b><span>Teachers you create will appear here.</span></div>}
+      </details>
+
+      <details className="settingsAccordion">
+        <summary><span><Icon name="profile"/>Add Teacher</span><b>⌄</b></summary>
+        <form className="accordionBody" onSubmit={addTeacher}>
+          <input name="full_name" placeholder="Teacher full name" required/>
+          <input name="username" placeholder="Username" required/>
+          <input name="password" placeholder="Temporary password" minLength={4} required/>
+          <label>Assigned Class <span className="optionalText">Optional</span><select name="class_id"><option value="">No class assigned</option>{classes.map(c=><option value={c.id} key={c.id}>{c.display_name}</option>)}</select></label>
+          <button>Add Teacher</button>
+        </form>
+      </details>
+
+      <details className="settingsAccordion">
+        <summary><span><Icon name="students"/>Teachers List</span><span className="countPill">{teachers.length}</span></summary>
+        <div className="accordionBody teacherListCard">
+          <p className="settingsHint">Passwords are not stored in readable form. Set a new temporary password whenever a teacher needs one.</p>
+          {teachers.length?teachers.map(t=><div className="teacherAccountRow" key={t.id}>
+            <div className="teacherAccountInfo">
+              <div className="teacherAccountTop"><b>{t.full_name}</b><span className={t.active?"status done":"status pending"}>{t.active?"Active":"Inactive"}</span></div>
+              <span className="teacherMeta">@{t.username}</span>
+              <span className="teacherMeta">{t.class_names?("Class: "+t.class_names):"No class assigned"}</span>
+            </div>
+            <form className="teacherPasswordReset" onSubmit={e=>resetTeacherPassword(t.id,e)}>
+              <input name="password" type="text" minLength={4} placeholder="New temporary password" required/>
+              <button type="submit">Reset Password</button>
+            </form>
+          </div>):<div className="emptyState"><Icon name="profile"/><b>No teachers added</b><span>Teachers you create will appear here.</span></div>}
+        </div>
+      </details>
     </div>
   </div>
 }
