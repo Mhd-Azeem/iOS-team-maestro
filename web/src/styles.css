@@ -710,3 +710,26 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
   .attendanceTabs{grid-template-columns:1fr}
   .periodRow{grid-template-columns:1fr;gap:7px}
 }
+
+
+.teacherListCard{display:grid;gap:6px}
+.teacherAccountRow{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(260px,380px);
+  gap:16px;
+  align-items:center;
+  padding:16px 0;
+  border-top:1px solid var(--line);
+}
+.teacherAccountRow:first-of-type{border-top:0}
+.teacherAccountInfo{display:grid;gap:5px;min-width:0}
+.teacherAccountTop{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.teacherAccountTop b{font-size:15px}
+.teacherMeta{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.teacherPasswordReset{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.teacherPasswordReset input{min-width:0}
+.teacherPasswordReset button{white-space:nowrap}
+@media(max-width:700px){
+  .teacherAccountRow{grid-template-columns:1fr}
+  .teacherPasswordReset{grid-template-columns:1fr}
+}
