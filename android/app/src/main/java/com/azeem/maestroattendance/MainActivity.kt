@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
   private lateinit var web: WebView
   private lateinit var updater: UpdateManager
   private var filePathCallback: ValueCallback<Array<Uri>>? = null
+  private var lastUpdateCheckAt = 0L
 
   private val fileChooserLauncher =
     registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -139,12 +140,19 @@ class MainActivity : AppCompatActivity() {
     web.loadUrl(BuildConfig.APP_URL)
 
     updater = UpdateManager(this)
-    if (isOnline()) updater.checkForUpdate()
+    // The first check runs in onResume, after the activity becomes visible.
   }
 
   override fun onResume() {
     super.onResume()
-    if (::updater.isInitialized) updater.resumePendingUpdate()
+    if (::updater.isInitialized) {
+      updater.resumePendingUpdate()
+      val now = android.os.SystemClock.elapsedRealtime()
+      if (isOnline() && (lastUpdateCheckAt == 0L || now - lastUpdateCheckAt > 5 * 60 * 1000L)) {
+        lastUpdateCheckAt = now
+        updater.checkForUpdate()
+      }
+    }
   }
 
   private fun isOnline(): Boolean {
