@@ -24,6 +24,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: TypeScript validation
         run: npm run check
+      - name: Tenant regression tests
+        run: node --test tests/*.test.mjs
       - name: Apply migrations to isolated local D1
         run: npx wrangler d1 migrations apply maestro-school-attendance-db --local --persist-to .wrangler/ci-d1
       - name: Assert tenant database schema
