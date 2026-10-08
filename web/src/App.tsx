@@ -39,8 +39,8 @@ const isAdmin=["SUPER_ADMIN","SCHOOL_ADMIN","SECTION_HEAD"].includes(me.user.rol
 return <div className="shell"><aside><div className="school"><div className="schoolmark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo" style={{width:(me.school.logo_scale||100)+"%",height:(me.school.logo_scale||100)+"%"}}/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div><b>{me.school.name}</b><small>{me.school.app_name}</small></div></div><nav>{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</nav><button className="logoutBtn" onClick={logout}><Icon name="logout"/><span>Logout</span></button></aside><main><header className="pageHead"><div><span className="eyebrow">{me.school.short_name||"School Attendance"}</span><h1>{page[0].toUpperCase()+page.slice(1)}</h1><p>{me.user.full_name} · {me.user.role.replaceAll("_"," ")}</p></div><div className="avatar">{me.user.full_name.slice(0,1).toUpperCase()}</div></header>{error&&<div className="error">{error}</div>}
 {page==="home"&&<><section className="hero"><div className="heroMark">{me.school.logo_url?<img src={me.school.logo_url} alt="School logo" style={{width:(me.school.logo_scale||100)+"%",height:(me.school.logo_scale||100)+"%"}}/>:(me.school.short_name||me.school.name).slice(0,2).toUpperCase()}</div><div className="heroText"><span className="eyebrow light">Welcome back</span><h2>{me.school.app_name}</h2><p>{me.school.motto||me.school.name}</p></div><div className="heroBadge"><Icon name="calendar"/><span>{new Date().toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}</span></div></section><div className="stats"><Card t="Total Students" v={dash?.totalStudents||0} icon="students"/><Card t="Present Today" v={dash?.presentToday||0} icon="present"/><Card t="Absent Today" v={dash?.absentToday||0} icon="absent"/><Card t="Submitted" v={dash?(dash.submitted+"/"+dash.totalClasses):"0/0"} icon="classes"/></div><div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Today</span><h3>Class Status</h3></div><span className="countPill">{classes.length} classes</span></div>{classes.length?classes.map(c=>{const pending=dash?.pending?.some((x:any)=>x.id===c.id);return <div className="row classRow" key={c.id}><div className="classIdentity"><span className="classDot">{c.display_name.slice(0,2)}</span><span>{c.display_name}</span></div><span className={pending?"status pending":"status done"}>{pending?"Not submitted":"Submitted"}</span></div>}):<div className="emptyState"><Icon name="classes"/><b>No classes yet</b><span>Set up grades and classes from Settings.</span></div>}</div></>}
 {page==="attendance"&&isTeacher&&<TeacherAttendancePortal classes={classes} students={students} chooseClass={chooseClass} done={m=>{setSuccess(m);api("/api/dashboard").then(setDash)}}/>}
-{page==="history"&&<History/>}{page==="students"&&isAdmin&&<StudentsPage classes={classes} done={m=>{setSuccess(m);api("/api/dashboard").then(setDash)}}/>}{page==="settings"&&isAdmin&&<SettingsPage classes={classes} school={me.school} refresh={()=>api("/api/classes").then(setClasses)} onSchoolUpdated={school=>setMe((current:any)=>({...current,school}))} done={m=>setSuccess(m)}/>}
-{page==="privacy"&&<PrivacyPage isAdmin={isAdmin}/>}{page==="security"&&<SecurityPage/>}{page==="profile"&&<div className="card profileCard"><div className="profileAvatar">{me.user.full_name.slice(0,1).toUpperCase()}</div><h2>{me.user.full_name}</h2><p className="muted">@{me.user.username}</p><span className="rolePill">{me.user.role.replaceAll("_"," ")}</span><button className="secondaryDanger" onClick={logout}><Icon name="logout"/> Logout</button></div>}</main><div className="bottom">{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</div>{success&&<div className="modalbg"><div className="modal"><b>✓</b><h2>Submitted Successfully</h2><p>{success}</p><button onClick={()=>setSuccess("")}>OK</button></div></div>}</div>}
+{page==="history"&&<History/>}{page==="students"&&isAdmin&&<StudentsPage classes={classes} done={m=>{setSuccess(m);api("/api/dashboard").then(setDash)}}/>}{page==="settings"&&<SettingsPage isAdmin={isAdmin} canReviewPrivacy={["SUPER_ADMIN","SCHOOL_ADMIN"].includes(me.user.role)} classes={classes} school={me.school} refresh={()=>api("/api/classes").then(setClasses)} onSchoolUpdated={school=>setMe((current:any)=>({...current,school}))} done={m=>setSuccess(m)}/>}
+{page==="profile"&&<div className="card profileCard"><div className="profileAvatar">{me.user.full_name.slice(0,1).toUpperCase()}</div><h2>{me.user.full_name}</h2><p className="muted">@{me.user.username}</p><span className="rolePill">{me.user.role.replaceAll("_"," ")}</span><button className="secondaryDanger" onClick={logout}><Icon name="logout"/> Logout</button></div>}</main><div className="bottom">{nav.map(n=><button className={page===n[0]?"active":""} onClick={()=>setPage(n[0])} key={n[0]}><Icon name={n[2]}/><span>{n[1]}</span></button>)}</div>{success&&<div className="modalbg"><div className="modal"><b>✓</b><h2>Submitted Successfully</h2><p>{success}</p><button onClick={()=>setSuccess("")}>OK</button></div></div>}</div>}
 function AuthPortal({initialized,error,onLogin,onRegister}:{initialized:boolean;error:string;onLogin:(e:FormEvent<HTMLFormElement>)=>void;onRegister:(e:FormEvent<HTMLFormElement>)=>void}){
   const[tab,setTab]=useState<"login"|"register">(initialized?"login":"register");
   return <div className="auth">
@@ -213,7 +213,7 @@ function IndividualStudentForm({grades,classes,onSubmit}:{grades:any[];classes:C
   </form>
 }
 
-function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[];school:any;refresh:()=>void;onSchoolUpdated:(school:any)=>void;done:(message:string)=>void}){
+function SettingsPage({isAdmin,canReviewPrivacy,classes,school,refresh,onSchoolUpdated,done}:{isAdmin:boolean;canReviewPrivacy:boolean;classes:C[];school:any;refresh:()=>void;onSchoolUpdated:(school:any)=>void;done:(message:string)=>void}){
   const[grades,setGrades]=useState<any[]>([]);
   const[teachers,setTeachers]=useState<any[]>([]);
   const[error,setError]=useState("");
@@ -225,7 +225,7 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
 
   async function loadGrades(){try{setGrades(await api("/api/grades"))}catch(e:any){setError(e.message)}}
   async function loadTeachers(){try{setTeachers(await api("/api/teachers"))}catch(e:any){setError(e.message)}}
-  useEffect(()=>{loadGrades();loadTeachers()},[]);
+  useEffect(()=>{if(isAdmin){loadGrades();loadTeachers()}},[isAdmin]);
   useEffect(()=>{
     setLogoPreview(school?.logo_url||"");
     const saved=Number(localStorage.getItem("sat_logo_scale_"+school.id)||school?.logo_scale||100);
@@ -319,12 +319,16 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
   return <div className="settingsPage">
     <div className="card sectionCard">
       <div className="sectionTitle"><div><span className="eyebrow">Administration</span><h2>Settings</h2></div><div className="sectionIcon"><Icon name="settings"/></div></div>
-      <p className="settingsHint">Tap a section to expand it. Add grades and optional classes together, manage the school logo, and manage teacher accounts.</p>
+      <p className="settingsHint">Manage your account, privacy and signed-in devices in one place. {isAdmin?"School administrators can also manage grades, branding and teachers.":"Your personal settings are available below."}</p>
       {error&&<div className="error">{error}</div>}
     </div>
 
     <div className="settingsAccordionList">
-      <details className="settingsAccordion">
+      <div className="settingsGroupHeading"><span>Account & protection</span><small>Personal controls</small></div>
+      {isAdmin&&<details className="settingsAccordion"><summary><span><Icon name="profile"/>Privacy & data requests</span><b>⌄</b></summary><div className="accordionBody"><PrivacyPage isAdmin={canReviewPrivacy}/></div></details>
+      {isAdmin&&<details className="settingsAccordion"><summary><span><Icon name="settings"/>Security & active sessions</span><b>⌄</b></summary><div className="accordionBody"><SecurityPage/></div></details>
+      {isAdmin&&<div className="settingsGroupHeading"><span>School administration</span><small>Administrator only</small></div>}
+      {isAdmin&&<details className="settingsAccordion">
         <summary><span><Icon name="school"/>School Logo</span><b>⌄</b></summary>
         <div className="accordionBody brandingCard">
           <div className="logoPreview">{logoPreview?<img src={logoPreview} alt="School logo preview" style={{width:logoScale+"px",height:logoScale+"px"}}/>:<div className="logoPlaceholder"><Icon name="school"/><span>No logo</span></div>}</div>
@@ -333,9 +337,9 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
           <small className="logoHelp">Choose the image, then drag the size slider until the logo looks right.</small>
           {logoPreview&&<button type="button" className="secondaryDanger" onClick={removeLogo} disabled={logoBusy}>Remove Logo</button>}
         </div>
-      </details>
+      </details>}
 
-      <details className="settingsAccordion">
+      {isAdmin&&<details className="settingsAccordion">
         <summary><span><Icon name="classes"/>Add Grade</span><b>⌄</b></summary>
         <form className="accordionBody gradeClassForm" onSubmit={addGradeWithOptionalClass}>
           <label className="inlineSettingRow"><span>Grade</span><input value={gradeInput} onChange={e=>setGradeInput(e.target.value)} placeholder="eg: 10" required/></label>
@@ -343,9 +347,9 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
           <div className="gradeClassPreview"><small>Output</small><strong>{previewOutput}</strong></div>
           <button type="submit">Add Grade{classInput.trim()?" & Class":""}</button>
         </form>
-      </details>
+      </details>}
 
-      <details className="settingsAccordion">
+      {isAdmin&&<details className="settingsAccordion">
         <summary><span><Icon name="profile"/>Add Teacher</span><b>⌄</b></summary>
         <form className="accordionBody" onSubmit={addTeacher}>
           <input name="full_name" placeholder="Teacher full name" required/>
@@ -354,9 +358,9 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
           <label>Assigned Class <span className="optionalText">Optional</span><select name="class_id"><option value="">No class assigned</option>{classes.map(c=><option value={c.id} key={c.id}>{c.display_name}</option>)}</select></label>
           <button>Add Teacher</button>
         </form>
-      </details>
+      </details>}
 
-      <details className="settingsAccordion">
+      {isAdmin&&<details className="settingsAccordion">
         <summary><span><Icon name="students"/>Teachers List</span><span className="countPill">{teachers.length}</span></summary>
         <div className="accordionBody teacherListCard">
           <p className="settingsHint">Passwords are not stored in readable form. Set a new temporary password whenever a teacher needs one.</p>
@@ -372,7 +376,7 @@ function SettingsPage({classes,school,refresh,onSchoolUpdated,done}:{classes:C[]
             </form>
           </div>):<div className="emptyState"><Icon name="profile"/><b>No teachers added</b><span>Teachers you create will appear here.</span></div>}
         </div>
-      </details>
+      </details>}
     </div>
   </div>
 }
