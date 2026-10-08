@@ -38,8 +38,8 @@ class UpdateManager(private val context: Context) {
         val payload = connection.inputStream.bufferedReader().use { it.readText() }
         val release = JSONObject(payload)
         val latestTag = release.optString("tag_name").removePrefix("v")
-        val remoteBuild = Regex("build(\\\\d+)", RegexOption.IGNORE_CASE).find(latestTag)?.groupValues?.get(1)?.toIntOrNull()
-          ?: Regex("Android build number:\\s*(\\\\d+)").find(release.optString("body"))?.groupValues?.get(1)?.toIntOrNull()
+        val remoteBuild = Regex("""build(\d+)""", RegexOption.IGNORE_CASE).find(latestTag)?.groupValues?.get(1)?.toIntOrNull()
+          ?: Regex("""Android build number:\s*(\d+)""").find(release.optString("body"))?.groupValues?.get(1)?.toIntOrNull()
         val newer = if (remoteBuild != null) remoteBuild > BuildConfig.VERSION_CODE
           else isNewer(latestTag, BuildConfig.VERSION_NAME)
         if (!newer) return@thread
