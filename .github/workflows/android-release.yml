@@ -6,7 +6,9 @@ on:
     branches:
       - "claude/team-maestro-exam-ios-yc6u56"
     paths:
-      - "android/app/build.gradle.kts"
+      - "android/**"
+      - "web/**"
+      - ".github/workflows/android-release.yml"
 
 permissions:
   contents: write
