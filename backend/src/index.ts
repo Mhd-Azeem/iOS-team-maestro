@@ -689,6 +689,91 @@ export default {
         });
       }
 
+      if (path === "/api/subjects" && req.method === "GET") {
+        const rows = await env.DB.prepare(
+          "SELECT id,name,code,active FROM school_subjects WHERE school_id=? ORDER BY name"
+        ).bind(auth.schoolId).all();
+        return json(rows.results);
+      }
+
+      if (path === "/api/subjects" && req.method === "POST") {
+        if (!isAdmin(auth)) return fail("Administrator access required.", 403);
+        const b = await requestBody(req);
+        const name = String(b.name || "").trim();
+        const code = String(b.code || "").trim();
+        if (!name || name.length > 120 || code.length > 24) return fail("Invalid subject name or code.");
+        try {
+          const result = await env.DB.prepare(
+            "INSERT INTO school_subjects(school_id,name,code) VALUES(?,?,?)"
+          ).bind(auth.schoolId,name,code || null).run();
+          return json({id:result.meta.last_row_id},201);
+        } catch { return fail("This subject already exists.",409); }
+      }
+
+      if (path === "/api/period-templates" && req.method === "GET") {
+        const rows = await env.DB.prepare(
+          "SELECT id,period_number,label,starts_at,ends_at FROM school_period_templates WHERE school_id=? ORDER BY period_number"
+        ).bind(auth.schoolId).all();
+        return json(rows.results);
+      }
+
+      if (path === "/api/period-templates" && req.method === "PUT") {
+        if (!isAdmin(auth)) return fail("Administrator access required.",403);
+        const b = await requestBody(req);
+        const periods = Array.isArray(b.periods) ? b.periods : [];
+        const settings = await env.DB.prepare("SELECT period_count FROM school_settings WHERE school_id=?").bind(auth.schoolId).first<{period_count:number}>();
+        const count = settings?.period_count || 9;
+        if (periods.length !== count || count < 1 || count > 24) return fail("Provide one template for every configured period.");
+        const validTime = (v:any) => v == null || v === "" || (typeof v === "string" && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(v));
+        if (periods.some((p:any,i:number) => Number(p.period_number) !== i+1 || !String(p.label||"").trim() || String(p.label).length > 80 || !validTime(p.starts_at) || !validTime(p.ends_at))) return fail("Invalid period template.");
+        await env.DB.batch([
+          env.DB.prepare("DELETE FROM school_period_templates WHERE school_id=?").bind(auth.schoolId),
+          ...periods.map((p:any) => env.DB.prepare(
+            "INSERT INTO school_period_templates(school_id,period_number,label,starts_at,ends_at) VALUES(?,?,?,?,?)"
+          ).bind(auth.schoolId,Number(p.period_number),String(p.label).trim(),p.starts_at||null,p.ends_at||null))
+        ]);
+        return json({ok:true});
+      }
+
+      if (path === "/api/calendar" && req.method === "GET") {
+        const rows = await env.DB.prepare(
+          "SELECT day,day_type,label FROM school_calendar_days WHERE school_id=? ORDER BY day DESC LIMIT 500"
+        ).bind(auth.schoolId).all();
+        return json(rows.results);
+      }
+
+      if (path === "/api/calendar" && req.method === "PUT") {
+        if (!isAdmin(auth)) return fail("Administrator access required.",403);
+        const b = await requestBody(req);
+        const day = String(b.day||"");
+        const dayType = String(b.day_type||"");
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !["SCHOOL_DAY","WEEKEND","HOLIDAY","SPECIAL_HOLIDAY","SPECIAL_SCHOOL_DAY"].includes(dayType)) return fail("Invalid calendar day.");
+        const label = String(b.label||"").slice(0,200);
+        await env.DB.prepare(
+          "INSERT INTO school_calendar_days(school_id,day,day_type,label,created_by) VALUES(?,?,?,?,?) ON CONFLICT(school_id,day) DO UPDATE SET day_type=excluded.day_type,label=excluded.label,created_by=excluded.created_by"
+        ).bind(auth.schoolId,day,dayType,label,auth.userId).run();
+        return json({ok:true});
+      }
+
+      if (path === "/api/notifications" && req.method === "GET") {
+        const rows = await env.DB.prepare(
+          "SELECT id,title,message,created_at FROM school_notifications WHERE school_id=? ORDER BY created_at DESC,id DESC LIMIT 100"
+        ).bind(auth.schoolId).all();
+        return json(rows.results);
+      }
+
+      if (path === "/api/notifications" && req.method === "POST") {
+        if (!isAdmin(auth)) return fail("Administrator access required.",403);
+        const b = await requestBody(req);
+        const title = String(b.title||"").trim();
+        const message = String(b.message||"").trim();
+        if (!title || !message || title.length>120 || message.length>2000) return fail("Invalid notification.");
+        const result = await env.DB.prepare(
+          "INSERT INTO school_notifications(school_id,created_by,title,message) VALUES(?,?,?,?)"
+        ).bind(auth.schoolId,auth.userId,title,message).run();
+        return json({id:result.meta.last_row_id},201);
+      }
+
       if (path === "/api/settings" && req.method === "GET") {
         const settings = await env.DB.prepare(
           "SELECT * FROM school_settings WHERE school_id=?"
