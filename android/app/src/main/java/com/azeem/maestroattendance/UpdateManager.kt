@@ -38,7 +38,11 @@ class UpdateManager(private val context: Context) {
         val payload = connection.inputStream.bufferedReader().use { it.readText() }
         val release = JSONObject(payload)
         val latestTag = release.optString("tag_name").removePrefix("v")
-        if (!isNewer(latestTag, BuildConfig.VERSION_NAME)) return@thread
+        val remoteBuild = Regex("build(\\\\d+)", RegexOption.IGNORE_CASE).find(latestTag)?.groupValues?.get(1)?.toIntOrNull()
+          ?: Regex("Android build number:\\s*(\\\\d+)").find(release.optString("body"))?.groupValues?.get(1)?.toIntOrNull()
+        val newer = if (remoteBuild != null) remoteBuild > BuildConfig.VERSION_CODE
+          else isNewer(latestTag, BuildConfig.VERSION_NAME)
+        if (!newer) return@thread
 
         val assets = release.optJSONArray("assets") ?: return@thread
         var apkUrl: String? = null
@@ -57,7 +61,7 @@ class UpdateManager(private val context: Context) {
           updatePromptShowing = true
           AlertDialog.Builder(context)
             .setTitle("Update available")
-            .setMessage("Version $latestTag is available. Download and install it now?")
+            .setMessage("A newer build is available: $latestTag (build ${remoteBuild ?: "unknown"}). Installed build: ${BuildConfig.VERSION_CODE}. Download and install?")
             .setNegativeButton("Later") { _, _ -> updatePromptShowing = false }
             .setPositiveButton("Update") { _, _ -> updatePromptShowing = false; startDownload(apkUrl, latestTag) }
             .setOnCancelListener { updatePromptShowing = false }
