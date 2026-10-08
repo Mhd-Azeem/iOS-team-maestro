@@ -21,6 +21,7 @@ class UpdateManager(private val context: Context) {
   private var updateDownloadId: Long = -1L
   private var pendingUrl: String? = null
   private var pendingVersion: String? = null
+  private var updatePromptShowing = false
 
   fun checkForUpdate() {
     thread {
@@ -49,14 +50,17 @@ class UpdateManager(private val context: Context) {
             break
           }
         }
-        if (apkUrl.isNullOrBlank()) return@thread
+        if (apkUrl.isNullOrBlank() || !apkUrl.startsWith("https://github.com/${BuildConfig.GITHUB_REPO}/releases/download/")) return@thread
 
         (context as? MainActivity)?.runOnUiThread {
+          if (updatePromptShowing || (context as MainActivity).isFinishing) return@runOnUiThread
+          updatePromptShowing = true
           AlertDialog.Builder(context)
             .setTitle("Update available")
             .setMessage("Version $latestTag is available. Download and install it now?")
-            .setNegativeButton("Later", null)
-            .setPositiveButton("Update") { _, _ -> startDownload(apkUrl, latestTag) }
+            .setNegativeButton("Later") { _, _ -> updatePromptShowing = false }
+            .setPositiveButton("Update") { _, _ -> updatePromptShowing = false; startDownload(apkUrl, latestTag) }
+            .setOnCancelListener { updatePromptShowing = false }
             .show()
         }
       } catch (_: Exception) {
@@ -90,7 +94,10 @@ class UpdateManager(private val context: Context) {
       .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
       .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
 
-    updateDownloadId = downloads.enqueue(request)
+    try { updateDownloadId = downloads.enqueue(request) } catch (_: Exception) {
+      Toast.makeText(context, "Could not start update download.", Toast.LENGTH_LONG).show()
+      return
+    }
     registerCompletionReceiver()
     Toast.makeText(context, "Update download started.", Toast.LENGTH_SHORT).show()
   }
@@ -137,7 +144,7 @@ class UpdateManager(private val context: Context) {
 
     val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+      context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
     } else {
       @Suppress("DEPRECATION")
       context.registerReceiver(receiver, filter)
