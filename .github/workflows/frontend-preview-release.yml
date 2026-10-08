@@ -1,0 +1,50 @@
+name: Maestro Frontend Preview APK
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/team-maestro-exam-ios-yc6u56
+    paths:
+      - 'web/**'
+      - '.github/workflows/frontend-preview-release.yml'
+permissions:
+  contents: write
+jobs:
+  preview-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build frontend
+        working-directory: web
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          rm -rf ../android/app/src/main/assets/web
+          mkdir -p ../android/app/src/main/assets/web
+          cp -R dist/. ../android/app/src/main/assets/web/
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Generate wrapper
+        working-directory: android
+        run: gradle wrapper
+      - name: Build installable preview APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+      - name: Publish prerelease to Releases tab
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="frontend-preview-${GITHUB_RUN_NUMBER}"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "Maestro-Frontend-Preview-${GITHUB_RUN_NUMBER}.apk"
+          gh release create "$TAG" "Maestro-Frontend-Preview-${GITHUB_RUN_NUMBER}.apk" \
+            --title "Maestro Frontend Preview #${GITHUB_RUN_NUMBER}" \
+            --notes "Installable debug-signed preview. Not production-ready; backend services may be unavailable. Not a Play Store release." \
+            --prerelease --target "${GITHUB_SHA}"
