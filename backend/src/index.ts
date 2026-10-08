@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   PLATFORM_APPROVAL_KEY?: string;
+  PLATFORM_ALLOWED_ORIGIN?: string;
 }
 
 type Auth = {
@@ -74,17 +75,20 @@ async function authenticate(req: Request, env: Env): Promise<Auth | null> {
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) return null;
   const tokenHash = await sha256(header.slice(7));
-  return await env.DB.prepare(
+  const session = await env.DB.prepare(
     `SELECT u.id userId,u.school_id schoolId,u.role,u.full_name fullName,u.username
      FROM sessions s
      JOIN users u ON u.id=s.user_id AND u.school_id=s.school_id
      JOIN schools sc ON sc.id=s.school_id
      WHERE s.token_hash=?
        AND s.expires_at>datetime('now')
+       AND s.last_seen_at>datetime('now','-12 hours')
        AND u.active=1
        AND sc.active=1
        AND sc.verification_status='APPROVED'`
-  ).bind(tokenHash).first<Auth>() || null;
+  ).bind(tokenHash).first<Auth>();
+  if(session) await env.DB.prepare("UPDATE sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE token_hash=?").bind(tokenHash).run();
+  return session || null;
 }
 
 function isAdmin(auth: Auth): boolean {
@@ -173,6 +177,8 @@ export default {
     }
 
     const url = new URL(req.url);
+    const origin = req.headers.get("origin");
+    if(origin && env.PLATFORM_ALLOWED_ORIGIN && origin !== env.PLATFORM_ALLOWED_ORIGIN) return fail("Origin not allowed.",403);
     const path = url.pathname;
 
     try {
@@ -240,6 +246,19 @@ export default {
       const auth = await authenticate(req, env);
       if (!auth) return fail("Please sign in to continue.", 401);
 
+      if (path === "/api/sessions" && req.method === "GET") {
+        const rows=await env.DB.prepare("SELECT id,created_at,expires_at,last_seen_at FROM sessions WHERE school_id=? AND user_id=? ORDER BY id DESC LIMIT 50").bind(auth.schoolId,auth.userId).all();
+        return json(rows.results);
+      }
+      const sessionMatch = new RegExp("^/api/sessions/([0-9]+)$").exec(path);
+      if(sessionMatch && req.method === "DELETE") {
+        await env.DB.prepare("DELETE FROM sessions WHERE id=? AND user_id=? AND school_id=?").bind(Number(sessionMatch[1]),auth.userId,auth.schoolId).run();
+        return json({ok:true});
+      }
+      if (path === "/api/sessions/revoke-all" && req.method === "POST") {
+        await env.DB.prepare("DELETE FROM sessions WHERE user_id=? AND school_id=?").bind(auth.userId,auth.schoolId).run();
+        return json({ok:true});
+      }
       if (path === "/api/logout" && req.method === "POST") {
         const token = req.headers.get("authorization")!.slice(7);
         await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?")
@@ -302,6 +321,18 @@ export default {
         if (!["ACCESS","CORRECTION","ERASURE"].includes(b.type)) return fail("Invalid request type.");
         await env.DB.prepare("INSERT INTO privacy_requests(school_id,requester_id,request_type,details) VALUES(?,?,?,?)").bind(auth.schoolId,auth.userId,b.type,String(b.details||"").slice(0,2000)).run();
         return json({ok:true,status:"RECEIVED"},201);
+      }
+      const privacyMatch=new RegExp("^/api/privacy/requests/([0-9]+)$").exec(path);
+      if(privacyMatch && req.method==="PATCH") {
+        if(!["SCHOOL_ADMIN","SUPER_ADMIN"].includes(auth.role)) return fail("School administrator required.",403);
+        const b=await requestBody(req);
+        if(!["IN_REVIEW","COMPLETED","DENIED"].includes(b.status)) return fail("Invalid request status.");
+        const id=Number(privacyMatch[1]);
+        const changed=await env.DB.batch([
+          env.DB.prepare("UPDATE privacy_requests SET status=?,resolved_at=CURRENT_TIMESTAMP,resolution_note=? WHERE id=? AND school_id=? AND status IN ('RECEIVED','IN_REVIEW')").bind(b.status,String(b.note||"").slice(0,1000),id,auth.schoolId),
+          env.DB.prepare("INSERT INTO audit_logs(school_id,user_id,action,target_type,target_id,new_values) VALUES(?,?,?,?,?,?)").bind(auth.schoolId,auth.userId,"PRIVACY_REQUEST_REVIEWED","privacy_request",String(id),JSON.stringify({status:b.status}))
+        ]);
+        return json({ok:true,changed:changed[0].meta.changes});
       }
       if (path === "/api/privacy/requests" && req.method === "GET") {
         if (!isAdmin(auth)) return fail("Administrator access required.",403);
