@@ -190,7 +190,7 @@ export default {
         const schools = await env.DB.prepare("SELECT id,name,created_at,verification_status FROM schools WHERE verification_status='PENDING' ORDER BY created_at LIMIT 100").all();
         return json(schools.results);
       }
-      const approvalMatch = path.match(/^\\/api\\/platform\\/schools\\/(\\d+)\\/approval$/);
+      const approvalMatch = new RegExp("^/api/platform/schools/([0-9]+)/approval$").exec(path);
       if (approvalMatch && req.method === "POST") {
         if (!env.PLATFORM_APPROVAL_KEY || req.headers.get("x-platform-approval-key") !== env.PLATFORM_APPROVAL_KEY) return fail("Forbidden.",403);
         const body = await requestBody(req);
