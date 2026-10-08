@@ -835,3 +835,15 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
 .settingsAccordionList .accordionBody>.card h2{font-size:18px}
 .settingsAccordionList .accordionBody>.card p{line-height:1.55}
 @media(max-width:520px){.settingsGroupHeading{padding:9px 2px 0}.settingsGroupHeading small{font-size:11px}}
+
+
+/* Attendance draft and reporting */
+.offlineDraftNotice{display:flex;flex-direction:column;gap:5px;background:#eef8f3;border:1px solid #b8dfcb;border-radius:14px;padding:13px 16px;color:#166647;margin:10px 0 16px}
+.offlineDraftNotice span{font-size:12px;line-height:1.5}
+.reportsPage{display:grid;gap:18px}
+.reportsPage .stats{margin:0}
+.reportClass{padding:14px 0;border-bottom:1px solid #e7efeb}
+.reportClass:last-child{border-bottom:0}
+.reportClass .row{display:flex;justify-content:space-between;gap:12px;font-size:13px}
+.reportTrack{height:10px;background:#e8efed;border-radius:99px;overflow:hidden;margin-top:9px}
+.reportTrack>div{height:100%;background:var(--primary,#008759);border-radius:99px;transition:width .3s}
