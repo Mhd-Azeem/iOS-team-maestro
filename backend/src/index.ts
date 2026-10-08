@@ -76,8 +76,8 @@ async function authenticate(req: Request, env: Env): Promise<Auth | null> {
   return await env.DB.prepare(
     `SELECT u.id userId,u.school_id schoolId,u.role,u.full_name fullName,u.username
      FROM sessions s
-     JOIN users u ON u.id=s.user_id
-     JOIN schools sc ON sc.id=u.school_id
+     JOIN users u ON u.id=s.user_id AND u.school_id=s.school_id
+     JOIN schools sc ON sc.id=s.school_id
      WHERE s.token_hash=?
        AND s.expires_at>datetime('now')
        AND u.active=1
@@ -113,7 +113,7 @@ async function registerSchool(req: Request, env: Env): Promise<Response> {
   if (!schoolName || !adminName || !username || !password) {
     return fail("School name, administrator name, username and password are required.");
   }
-  if (password.length < 6) return fail("Password must be at least 6 characters.");
+  if (password.length < 10 || password.length > 128) return fail("Password must be between 10 and 128 characters.");
 
   const existing = await env.DB.prepare(
     "SELECT id FROM users WHERE username=? COLLATE NOCASE LIMIT 1"
