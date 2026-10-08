@@ -16,6 +16,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.ValueCallback
 import android.webkit.WebView
+import android.webkit.JavascriptInterface
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,6 +31,16 @@ class MainActivity : AppCompatActivity() {
   private lateinit var updater: UpdateManager
   private var filePathCallback: ValueCallback<Array<Uri>>? = null
   private var lastUpdateCheckAt = 0L
+
+  inner class NativeBridge {
+    @JavascriptInterface fun checkForUpdates() {
+      runOnUiThread {
+        if (::updater.isInitialized && isOnline()) updater.checkForUpdate(true)
+        else android.widget.Toast.makeText(this@MainActivity, "Connect to the internet to check for updates.", android.widget.Toast.LENGTH_LONG).show()
+      }
+    }
+    @JavascriptInterface fun getBuildNumber(): Int = BuildConfig.VERSION_CODE
+  }
 
   private val fileChooserLauncher =
     registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -76,6 +87,7 @@ class MainActivity : AppCompatActivity() {
       .build()
 
     web.settings.javaScriptEnabled = true
+    web.addJavascriptInterface(NativeBridge(), "MaestroAndroid")
     web.settings.domStorageEnabled = true
     web.settings.databaseEnabled = true
     web.settings.setSupportZoom(false)
