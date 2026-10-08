@@ -120,12 +120,7 @@ function TeacherPeriodAttendance({classId,done}:{classId:number;done:()=>void}){
     <label>Date<input type="date" name="date" value={date} onChange={e=>setDate(e.target.value)} required/></label>
     <div className="periodProgress"><b>{completed} of 9 periods marked</b><span>{completed===9?"Ready to submit":"Tap one option for each period"}</span></div>
     {error&&<div className="error" role="alert">{error}</div>}
-    <div className="periodTapList">{Array.from({length:9},(_,i)=><div className="periodTapCard" key={i+1}>
-      <div className="periodTapTitle"><strong>Period {i+1}</strong>{selections[i+1]&&<span className="periodMarked">✓ Marked</span>}</div>
-      <div className="periodTapOptions" role="group" aria-label={"Period "+(i+1)+" attendance"}>
-        {statuses.map(status=><button key={status.value} type="button" aria-pressed={selections[i+1]===status.value} className={"periodTapOption "+(selections[i+1]===status.value?"selected "+(status.value==="ARRIVED"?"isArrived":status.value==="NO TEACHER PRESENTED"?"isAbsent":"isOther"):"")} onClick={()=>setSelections(current=>({...current,[i+1]:status.value}))}><span aria-hidden="true">{status.symbol}</span>{status.label}</button>)}
-      </div>
-    </div>)}</div>
+    <div className="periodTableScroll"><table className="periodRadioTable"><thead><tr><th scope="col">Period</th>{statuses.map(status=><th scope="col" key={status.value}>{status.label}</th>)}</tr></thead><tbody>{Array.from({length:9},(_,i)=><tr key={i+1}><th scope="row">Period {i+1}</th>{statuses.map(status=><td key={status.value}><label className="periodRadioCell"><input type="radio" name={"period_"+(i+1)} value={status.value} checked={selections[i+1]===status.value} onChange={()=>setSelections(current=>({...current,[i+1]:status.value}))} aria-label={"Period "+(i+1)+": "+status.label}/></label></td>)}</tr>)}</tbody></table></div>
     <button className="primaryAction" disabled={busy||completed!==9}><Icon name="check"/>{busy?"Submitting…":"Submit Teacher Attendance"}</button>
   </form>
 }
