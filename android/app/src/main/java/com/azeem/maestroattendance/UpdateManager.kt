@@ -23,7 +23,7 @@ class UpdateManager(private val context: Context) {
   private var pendingVersion: String? = null
   private var updatePromptShowing = false
 
-  fun checkForUpdate() {
+  fun checkForUpdate(manual: Boolean = false) {
     thread {
       try {
         val endpoint = "https://api.github.com/repos/${BuildConfig.GITHUB_REPO}/releases/latest"
@@ -33,7 +33,11 @@ class UpdateManager(private val context: Context) {
         connection.setRequestProperty("Accept", "application/vnd.github+json")
         connection.setRequestProperty("User-Agent", "SchoolAttendanceUpdater/${BuildConfig.VERSION_NAME}")
 
-        if (connection.responseCode != 200) return@thread
+        if (connection.responseCode != 200) {
+          if (manual) notifyUser("Could not check for updates. Try again later.")
+          connection.disconnect()
+          return@thread
+        }
 
         val payload = connection.inputStream.bufferedReader().use { it.readText() }
         val release = JSONObject(payload)
@@ -42,7 +46,10 @@ class UpdateManager(private val context: Context) {
           ?: Regex("""Android build number:\s*(\d+)""").find(release.optString("body"))?.groupValues?.get(1)?.toIntOrNull()
         val newer = if (remoteBuild != null) remoteBuild > BuildConfig.VERSION_CODE
           else isNewer(latestTag, BuildConfig.VERSION_NAME)
-        if (!newer) return@thread
+        if (!newer) {
+          if (manual) notifyUser("You already have the latest available build.")
+          return@thread
+        }
 
         val assets = release.optJSONArray("assets") ?: return@thread
         var apkUrl: String? = null
@@ -68,8 +75,14 @@ class UpdateManager(private val context: Context) {
             .show()
         }
       } catch (_: Exception) {
-        // Update checks must never block normal app use.
+        if (manual) notifyUser("Update check failed. Check your connection.")
       }
+    }
+  }
+
+  private fun notifyUser(message: String) {
+    (context as? MainActivity)?.runOnUiThread {
+      Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     }
   }
 
