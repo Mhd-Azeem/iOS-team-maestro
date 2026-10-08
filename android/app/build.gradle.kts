@@ -11,7 +11,7 @@ android {
     applicationId = "com.azeem.maestroattendance"
     minSdk = 24
     targetSdk = 35
-    versionCode = 11
+    versionCode = (System.getenv("MAESTRO_BUILD_NUMBER")?.toIntOrNull() ?: 11)
     versionName = "1.0.10"
 
     val appUrl = (project.findProperty("APP_URL") as String?)
