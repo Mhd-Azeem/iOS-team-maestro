@@ -66,7 +66,7 @@ function AuthPortal({initialized,error,onLogin,onRegister}:{initialized:boolean;
         <div className="authTitle"><span className="eyebrow">Welcome back</span><h2>Login</h2><p>Sign in to your school account.</p></div>
         <label>Username<input name="username" autoComplete="username" required/></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required/></label>
-        <button className="primaryAction">Login</button>
+        <button className="primaryAction">Login</button><p className="settingsHint">Administrator forgot your password? Contact the verified platform support team. Self-service email recovery will be enabled only after secure server verification is ready.</p>
       </form>:<form onSubmit={onRegister}>
         <div className="authTitle"><span className="eyebrow">New school</span><h2>Register</h2><p>Request school verification. Access is enabled only after administrator approval.</p></div>
         <label>School Name<input name="schoolName" required/></label>
