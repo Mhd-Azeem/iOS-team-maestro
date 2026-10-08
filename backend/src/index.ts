@@ -1,5 +1,6 @@
 export interface Env {
   DB: D1Database;
+  PLATFORM_APPROVAL_KEY?: string;
 }
 
 type Auth = {
@@ -81,7 +82,8 @@ async function authenticate(req: Request, env: Env): Promise<Auth | null> {
      WHERE s.token_hash=?
        AND s.expires_at>datetime('now')
        AND u.active=1
-       AND sc.active=1`
+       AND sc.active=1
+       AND sc.verification_status='APPROVED'`
   ).bind(tokenHash).first<Auth>() || null;
 }
 
@@ -148,7 +150,7 @@ async function registerSchool(req: Request, env: Env): Promise<Response> {
       "INSERT OR IGNORE INTO school_settings(school_id) VALUES(?)"
     ).bind(schoolId).run();
 
-    return json({ token: await createSession(env, userId, schoolId) }, 201);
+    return json({ ok: true, schoolId, status: "PENDING", message: "Registration submitted for verification. Access will be enabled after approval." }, 202);
   } catch (error) {
     console.error("Registration failed", error);
     if (schoolId) {
@@ -183,6 +185,26 @@ export default {
         return json({ initialized: (row?.count || 0) > 0, registrationOpen: true });
       }
 
+      if (path === "/api/platform/schools/pending" && req.method === "GET") {
+        if (!env.PLATFORM_APPROVAL_KEY || req.headers.get("x-platform-approval-key") !== env.PLATFORM_APPROVAL_KEY) return fail("Forbidden.",403);
+        const schools = await env.DB.prepare("SELECT id,name,created_at,verification_status FROM schools WHERE verification_status='PENDING' ORDER BY created_at LIMIT 100").all();
+        return json(schools.results);
+      }
+      const approvalMatch = path.match(/^\\/api\\/platform\\/schools\\/(\\d+)\\/approval$/);
+      if (approvalMatch && req.method === "POST") {
+        if (!env.PLATFORM_APPROVAL_KEY || req.headers.get("x-platform-approval-key") !== env.PLATFORM_APPROVAL_KEY) return fail("Forbidden.",403);
+        const body = await requestBody(req);
+        if (!["APPROVED","REJECTED","SUSPENDED"].includes(body.status)) return fail("Invalid approval status.");
+        const schoolId = Number(approvalMatch[1]);
+        const result = await env.DB.prepare("UPDATE schools SET verification_status=?,verification_reviewed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(body.status,schoolId).run();
+        if (!result.meta.changes) return fail("School not found.",404);
+        if (body.status !== "APPROVED") await env.DB.prepare("DELETE FROM sessions WHERE school_id=?").bind(schoolId).run();
+        await env.DB.prepare("INSERT INTO platform_approval_events(school_id,status,note) VALUES(?,?,?)").bind(schoolId,body.status,String(body.note||"").slice(0,500)).run();
+        return json({ok:true});
+      }
+      if (path === "/api/privacy" && req.method === "GET") {
+        return json({ policy: "School administrators control school records. Access is limited by school and role. Contact the school administrator for correction, access or deletion requests. Data retention and deletion are subject to applicable legal obligations.", version: "draft-2026-10" });
+      }
       if (path === "/api/register" && req.method === "POST") {
         return await registerSchool(req, env);
       }
@@ -207,6 +229,8 @@ export default {
           return fail("Invalid username or password.", 401);
         }
 
+        const approval = await env.DB.prepare("SELECT verification_status FROM schools WHERE id=?").bind(user.school_id).first<{verification_status:string}>();
+        if (approval?.verification_status !== "APPROVED") return fail("School approval is pending or suspended.", 403);
         const hash = await passwordHash(password, String(user.password_salt));
         if (hash !== user.password_hash) return fail("Invalid username or password.", 401);
 
@@ -263,6 +287,27 @@ export default {
         return json({ ok: true, school });
       }
 
+      if (path === "/api/audit-logs" && req.method === "GET") {
+        if (!isAdmin(auth)) return fail("Administrator access required.",403);
+        const rows = await env.DB.prepare("SELECT id,user_id,action,target_type,target_id,created_at FROM audit_logs WHERE school_id=? ORDER BY id DESC LIMIT 200").bind(auth.schoolId).all();
+        return json(rows.results);
+      }
+      if (path === "/api/attendance/changes" && req.method === "GET") {
+        if (!isAdmin(auth)) return fail("Administrator access required.",403);
+        const rows = await env.DB.prepare("SELECT id,record_id,old_status,new_status,changed_by,reason,changed_at FROM attendance_changes WHERE school_id=? ORDER BY id DESC LIMIT 200").bind(auth.schoolId).all();
+        return json(rows.results);
+      }
+      if (path === "/api/privacy/requests" && req.method === "POST") {
+        const b = await requestBody(req);
+        if (!["ACCESS","CORRECTION","ERASURE"].includes(b.type)) return fail("Invalid request type.");
+        await env.DB.prepare("INSERT INTO privacy_requests(school_id,requester_id,request_type,details) VALUES(?,?,?,?)").bind(auth.schoolId,auth.userId,b.type,String(b.details||"").slice(0,2000)).run();
+        return json({ok:true,status:"RECEIVED"},201);
+      }
+      if (path === "/api/privacy/requests" && req.method === "GET") {
+        if (!isAdmin(auth)) return fail("Administrator access required.",403);
+        const rows = await env.DB.prepare("SELECT id,request_type,status,created_at FROM privacy_requests WHERE school_id=? ORDER BY id DESC LIMIT 100").bind(auth.schoolId).all();
+        return json(rows.results);
+      }
       if (path === "/api/dashboard" && req.method === "GET") {
         const date = new Date().toISOString().slice(0, 10);
         const total = await env.DB.prepare(
@@ -583,25 +628,31 @@ export default {
         const date = String(b.date || "").trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("A valid attendance date is required.");
 
-        await env.DB.prepare(
-          `INSERT INTO attendance_sessions(school_id,class_id,date,submitted_by)
-           VALUES(?,?,?,?)
-           ON CONFLICT(school_id,class_id,date)
-           DO UPDATE SET submitted_by=excluded.submitted_by,updated_at=CURRENT_TIMESTAMP`
-        ).bind(auth.schoolId, classId, date, auth.userId).run();
-
-        const session = await env.DB.prepare(
-          "SELECT id FROM attendance_sessions WHERE school_id=? AND class_id=? AND date=?"
-        ).bind(auth.schoolId, classId, date).first<{id:number}>();
-
-        for (const record of records) {
-          await env.DB.prepare(
-            `INSERT INTO attendance_records(school_id,session_id,student_id,status)
-             VALUES(?,?,?,?)
-             ON CONFLICT(session_id,student_id)
-             DO UPDATE SET status=excluded.status,updated_at=CURRENT_TIMESTAMP`
-          ).bind(auth.schoolId, session!.id, Number(record.student_id), String(record.status)).run();
+        const existing = await env.DB.prepare("SELECT id FROM attendance_sessions WHERE school_id=? AND class_id=? AND date=?").bind(auth.schoolId,classId,date).first<{id:number}>();
+        const old = existing ? await env.DB.prepare("SELECT id,student_id,status FROM attendance_records WHERE school_id=? AND session_id=?").bind(auth.schoolId,existing.id).all<{id:number;student_id:number;status:string}>() : {results:[]};
+        const previous = new Map(old.results.map(r=>[r.student_id,r]));
+        const changes = records.filter((r:any)=>previous.has(Number(r.student_id)) && previous.get(Number(r.student_id))!.status !== r.status);
+        const reason = String(b.reason||"").trim();
+        if (changes.length && (reason.length < 3 || reason.length > 500)) return fail("A correction reason (3-500 characters) is required.");
+        const statements: D1PreparedStatement[] = [
+          env.DB.prepare(`INSERT INTO attendance_sessions(school_id,class_id,date,submitted_by)
+            VALUES(?,?,?,?) ON CONFLICT(school_id,class_id,date) DO UPDATE SET submitted_by=excluded.submitted_by,updated_at=CURRENT_TIMESTAMP`).bind(auth.schoolId,classId,date,auth.userId)
+        ];
+        for(const record of records) {
+          const studentId=Number(record.student_id), status=String(record.status);
+          statements.push(env.DB.prepare(`INSERT INTO attendance_records(school_id,session_id,student_id,status)
+            VALUES(?,(SELECT id FROM attendance_sessions WHERE school_id=? AND class_id=? AND date=?),?,?)
+            ON CONFLICT(session_id,student_id) DO UPDATE SET status=excluded.status,updated_at=CURRENT_TIMESTAMP`)
+            .bind(auth.schoolId,auth.schoolId,classId,date,studentId,status));
+          const before=previous.get(studentId);
+          if(before && before.status!==status) {
+            statements.push(env.DB.prepare(`INSERT INTO attendance_changes(school_id,record_id,old_status,new_status,changed_by,reason)
+              VALUES(?,?,?,?,?,?)`).bind(auth.schoolId,before.id,before.status,status,auth.userId,reason));
+          }
         }
+        statements.push(env.DB.prepare("INSERT INTO audit_logs(school_id,user_id,action,target_type,target_id,new_values) VALUES(?,?,?,?,?,?)")
+          .bind(auth.schoolId,auth.userId,changes.length?"ATTENDANCE_CORRECTED":"ATTENDANCE_SUBMITTED","class",String(classId),JSON.stringify({date,changed:changes.length})));
+        await env.DB.batch(statements);
         return json({ ok: true });
       }
 
