@@ -99,7 +99,7 @@ async function classAllowed(env: Env, auth: Auth, classId: number): Promise<bool
     `SELECT 1
      FROM teacher_class_assignments t
      JOIN classes c ON c.id=t.class_id
-     WHERE t.school_id=? AND t.teacher_id=? AND t.class_id=? AND c.active=1`
+     WHERE t.school_id=? AND t.teacher_id=? AND t.class_id=? AND c.school_id=t.school_id AND c.active=1`
   ).bind(auth.schoolId, auth.userId, classId).first();
 }
 
