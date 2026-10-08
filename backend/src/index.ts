@@ -508,22 +508,28 @@ export default {
 
         const salt = hex(crypto.getRandomValues(new Uint8Array(16)));
         const hash = await passwordHash(password, salt);
-        const result = await env.DB.prepare(
-          `INSERT INTO users(school_id,full_name,username,password_hash,password_salt,role,force_password_change)
-           VALUES(?,?,?,?,?,'TEACHER',1)`
-        ).bind(auth.schoolId, fullName, username, hash, salt).run();
-
-        const teacherId = Number(result.meta.last_row_id);
-        const classIds = Array.isArray(b.class_ids) ? b.class_ids : [];
-        for (const rawId of classIds) {
-          const classId = Number(rawId);
-          if (!classId) continue;
-          await env.DB.prepare(
-            `INSERT OR IGNORE INTO teacher_class_assignments(school_id,teacher_id,class_id)
-             SELECT ?,?,id FROM classes WHERE id=? AND school_id=? AND active=1`
-          ).bind(auth.schoolId, teacherId, classId, auth.schoolId).run();
+        const classIds = [...new Set((Array.isArray(b.class_ids) ? b.class_ids : []).map(Number))];
+        if (classIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) return fail("Invalid class selection.");
+        for (const classId of classIds) {
+          if (!await classAllowed(env, auth, classId)) return fail("Class not found in your school.", 400);
         }
-        return json({ id: teacherId }, 201);
+        const statements = [
+          env.DB.prepare(
+            `INSERT INTO users(school_id,full_name,username,password_hash,password_salt,role,force_password_change)
+             VALUES(?,?,?,?,?,'TEACHER',1)`
+          ).bind(auth.schoolId, fullName, username, hash, salt)
+        ];
+        // Class assignments require the inserted user ID; query it only after creation.
+        const result = await env.DB.batch(statements);
+        const newId = Number(result[0].meta.last_row_id);
+        if (!newId) return fail("Teacher creation failed.", 500);
+        if (classIds.length) await env.DB.batch(classIds.map((classId) =>
+          env.DB.prepare(
+            `INSERT INTO teacher_class_assignments(school_id,teacher_id,class_id)
+             VALUES(?,?,?)`
+          ).bind(auth.schoolId, newId, classId)
+        ));
+        return json({ id: newId }, 201);
       }
 
       const teacherPasswordMatch = path.match(/^\/api\/teachers\/(\d+)\/password$/);
@@ -532,7 +538,7 @@ export default {
         const teacherId = Number(teacherPasswordMatch[1]);
         const b = await requestBody(req);
         const password = String(b.password || "");
-        if (password.length < 4) return fail("Temporary password must be at least 4 characters.");
+        if (password.length < 10 || password.length > 128) return fail("Temporary password must be between 10 and 128 characters.");
 
         const teacher = await env.DB.prepare(
           "SELECT id FROM users WHERE id=? AND school_id=? AND role='TEACHER'"
@@ -657,17 +663,17 @@ export default {
         const rows = await env.DB.prepare(
           `SELECT s.admission_number,s.full_name,
                   COALESCE(c.display_name,'Unassigned') display_name,
-                  COUNT(ar.id) total,
-                  SUM(CASE WHEN ar.status='PRESENT' THEN 1 ELSE 0 END) present,
-                  SUM(CASE WHEN ar.status='ABSENT' THEN 1 ELSE 0 END) absent
+                  COUNT(CASE WHEN ss.id IS NOT NULL THEN 1 END) total,
+                  SUM(CASE WHEN ss.id IS NOT NULL AND ar.status='PRESENT' THEN 1 ELSE 0 END) present,
+                  SUM(CASE WHEN ss.id IS NOT NULL AND ar.status='ABSENT' THEN 1 ELSE 0 END) absent
            FROM students s
-           LEFT JOIN classes c ON c.id=s.class_id
-           LEFT JOIN attendance_records ar ON ar.student_id=s.id
-           LEFT JOIN attendance_sessions ss ON ss.id=ar.session_id
-           WHERE s.school_id=? AND (ss.date BETWEEN ? AND ? OR ss.id IS NULL)
+           LEFT JOIN classes c ON c.id=s.class_id AND c.school_id=s.school_id
+           LEFT JOIN attendance_records ar ON ar.student_id=s.id AND ar.school_id=s.school_id
+           LEFT JOIN attendance_sessions ss ON ss.id=ar.session_id AND ss.school_id=s.school_id AND ss.date BETWEEN ? AND ?
+           WHERE s.school_id=?
            GROUP BY s.id
            ORDER BY COALESCE(c.display_name,''),s.admission_number`
-        ).bind(auth.schoolId, start, end).all<any>();
+        ).bind(start, end, auth.schoolId).all<any>();
 
         return json({
           headers: ["Admission","Name","Class","Total Days","Present","Absent","Attendance %"],
