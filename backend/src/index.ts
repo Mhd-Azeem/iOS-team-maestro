@@ -553,7 +553,7 @@ export default {
 
         const salt = hex(crypto.getRandomValues(new Uint8Array(16)));
         const hash = await passwordHash(password, salt);
-        const classIds = [...new Set((Array.isArray(b.class_ids) ? b.class_ids : []).map(Number))];
+        const classIds: number[] = [...new Set<number>((Array.isArray(b.class_ids) ? b.class_ids : []).map((value:unknown) => Number(value)))];
         if (classIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) return fail("Invalid class selection.");
         for (const classId of classIds) {
           if (!await classAllowed(env, auth, classId)) return fail("Class not found in your school.", 400);
