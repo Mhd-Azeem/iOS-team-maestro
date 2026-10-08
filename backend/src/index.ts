@@ -330,7 +330,7 @@ export default {
       if (path === "/api/classes" && req.method === "GET") {
         let sql = `SELECT c.id,c.grade_id,c.name,c.display_name,c.academic_year,g.name grade_name
                    FROM classes c
-                   LEFT JOIN grades g ON g.id=c.grade_id
+                   LEFT JOIN grades g ON g.id=c.grade_id AND g.school_id=c.school_id
                    WHERE c.school_id=? AND c.active=1`;
         const args: any[] = [auth.schoolId];
         if (auth.role === "TEACHER") {
@@ -376,8 +376,8 @@ export default {
         let sql = `SELECT s.id,s.admission_number,s.full_name,s.grade_id,s.class_id,
                           g.name grade_name,c.display_name class_name
                    FROM students s
-                   LEFT JOIN grades g ON g.id=s.grade_id
-                   LEFT JOIN classes c ON c.id=s.class_id
+                   LEFT JOIN grades g ON g.id=s.grade_id AND g.school_id=s.school_id
+                   LEFT JOIN classes c ON c.id=s.class_id AND c.school_id=s.school_id
                    WHERE s.school_id=? AND s.status='ACTIVE'`;
         const args: any[] = [auth.schoolId];
         if (classId) {
@@ -499,7 +499,7 @@ export default {
         const username = String(b.username || "").trim();
         const password = String(b.password || "");
         if (!fullName || !username || !password) return fail("Teacher name, username and password are required.");
-        if (password.length < 4) return fail("Temporary password must be at least 4 characters.");
+        if (password.length < 10 || password.length > 128) return fail("Temporary password must be between 10 and 128 characters.");
 
         const exists = await env.DB.prepare(
           "SELECT id FROM users WHERE username=? COLLATE NOCASE LIMIT 1"
@@ -568,6 +568,7 @@ export default {
 
         if (
           records.length !== validIds.size ||
+          new Set(records.map((r: any) => Number(r.student_id))).size !== records.length ||
           records.some((r: any) => !validIds.has(Number(r.student_id)) || !["PRESENT","ABSENT"].includes(String(r.status)))
         ) {
           return fail("Attendance must be recorded for every active student.");
@@ -604,9 +605,9 @@ export default {
                   SUM(CASE WHEN r.status='PRESENT' THEN 1 ELSE 0 END) present_count,
                   SUM(CASE WHEN r.status='ABSENT' THEN 1 ELSE 0 END) absent_count
            FROM attendance_sessions s
-           JOIN classes c ON c.id=s.class_id
-           JOIN users u ON u.id=s.submitted_by
-           LEFT JOIN attendance_records r ON r.session_id=s.id
+           JOIN classes c ON c.id=s.class_id AND c.school_id=s.school_id
+           JOIN users u ON u.id=s.submitted_by AND u.school_id=s.school_id
+           LEFT JOIN attendance_records r ON r.session_id=s.id AND r.school_id=s.school_id
            WHERE s.school_id=?
            GROUP BY s.id
            ORDER BY s.date DESC,s.id DESC
@@ -626,7 +627,9 @@ export default {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("A valid attendance date is required.");
         const periods = Array.isArray(b.periods) ? b.periods : [];
         const allowedStatuses = new Set(["ARRIVED","DELAYED","RELIEF","NO TEACHER PRESENTED"]);
-        if (periods.length !== 9) return fail("Teacher attendance must be recorded for all 9 periods.");
+        const periodSettings = await env.DB.prepare("SELECT period_count FROM school_settings WHERE school_id=?").bind(auth.schoolId).first<{period_count:number}>();
+        const periodCount = periodSettings?.period_count || 9;
+        if (periods.length !== periodCount) return fail("Teacher attendance must be recorded for all configured periods.");
         if (periods.some((p:any, i:number) => Number(p.period) !== i + 1 || !allowedStatuses.has(String(p.status)))) {
           return fail("Select a valid teacher attendance status for every period.");
         }
