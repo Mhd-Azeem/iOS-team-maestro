@@ -97,24 +97,36 @@ function TeacherAttendancePortal({classes,students,chooseClass,done}:{classes:C[
 
 function TeacherPeriodAttendance({classId,done}:{classId:number;done:()=>void}){
   const[error,setError]=useState("");
-  const statuses=["ARRIVED","DELAYED","RELIEF","NO TEACHER PRESENTED"];
+  const[date,setDate]=useState(new Date().toISOString().slice(0,10));
+  const[selections,setSelections]=useState<Record<number,string>>({});
+  const[busy,setBusy]=useState(false);
+  const statuses=[{value:"ARRIVED",label:"Arrived",symbol:"✓"},{value:"DELAYED",label:"Delayed",symbol:"◷"},{value:"RELIEF",label:"Relief",symbol:"↔"},{value:"NO TEACHER PRESENTED",label:"Not arrived",symbol:"✕"}];
+  useEffect(()=>{setSelections({});setError("")},[classId,date]);
+  const completed=Object.keys(selections).length;
   async function send(e:FormEvent<HTMLFormElement>){
     e.preventDefault();setError("");
     if(!classId){setError("Select a class first.");return}
-    const form=e.currentTarget,f=new FormData(form);
-    const periods=Array.from({length:9},(_,i)=>({period:i+1,status:String(f.get("period_"+(i+1))||"")}));
-    if(periods.some(p=>!p.status)){setError("Select a status for every period.");return}
+    const periods=Array.from({length:9},(_,i)=>({period:i+1,status:selections[i+1]||""}));
+    if(periods.some(p=>!p.status)){setError("Tap a status for all 9 periods before submitting.");return}
+    setBusy(true);
     try{
-      await api("/api/teacher-period-attendance",{method:"POST",body:JSON.stringify({class_id:classId,date:f.get("date"),periods})});
+      await api("/api/teacher-period-attendance",{method:"POST",body:JSON.stringify({class_id:classId,date,periods})});
       done();
     }catch(x:any){setError(x.message)}
+    finally{setBusy(false)}
   }
   if(!classId)return <div className="emptyState"><Icon name="classes"/><b>Select a class</b><span>Choose your assigned class above to mark teacher attendance.</span></div>;
   return <form className="attendanceForm teacherPeriodForm" onSubmit={send}>
-    <label>Date<input type="date" name="date" defaultValue={new Date().toISOString().slice(0,10)} required/></label>
-    {error&&<div className="error">{error}</div>}
-    <div className="periodList">{Array.from({length:9},(_,i)=><label className="periodRow" key={i+1}><span>Period {i+1}</span><select name={"period_"+(i+1)} required><option value="">Select status</option>{statuses.map(s=><option value={s} key={s}>{s.replaceAll("_"," ")}</option>)}</select></label>)}</div>
-    <button className="primaryAction"><Icon name="check"/>Submit Teacher Attendance</button>
+    <label>Date<input type="date" name="date" value={date} onChange={e=>setDate(e.target.value)} required/></label>
+    <div className="periodProgress"><b>{completed} of 9 periods marked</b><span>{completed===9?"Ready to submit":"Tap one option for each period"}</span></div>
+    {error&&<div className="error" role="alert">{error}</div>}
+    <div className="periodTapList">{Array.from({length:9},(_,i)=><div className="periodTapCard" key={i+1}>
+      <div className="periodTapTitle"><strong>Period {i+1}</strong>{selections[i+1]&&<span className="periodMarked">✓ Marked</span>}</div>
+      <div className="periodTapOptions" role="group" aria-label={"Period "+(i+1)+" attendance"}>
+        {statuses.map(status=><button key={status.value} type="button" aria-pressed={selections[i+1]===status.value} className={"periodTapOption "+(selections[i+1]===status.value?"selected "+(status.value==="ARRIVED"?"isArrived":status.value==="NO TEACHER PRESENTED"?"isAbsent":"isOther"):"")} onClick={()=>setSelections(current=>({...current,[i+1]:status.value}))}><span aria-hidden="true">{status.symbol}</span>{status.label}</button>)}
+      </div>
+    </div>)}</div>
+    <button className="primaryAction" disabled={busy||completed!==9}><Icon name="check"/>{busy?"Submitting…":"Submit Teacher Attendance"}</button>
   </form>
 }
 
