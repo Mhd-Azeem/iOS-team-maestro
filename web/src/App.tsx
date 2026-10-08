@@ -325,8 +325,8 @@ function SettingsPage({isAdmin,canReviewPrivacy,classes,school,refresh,onSchoolU
 
     <div className="settingsAccordionList">
       <div className="settingsGroupHeading"><span>Account & protection</span><small>Personal controls</small></div>
-      {isAdmin&&<details className="settingsAccordion"><summary><span><Icon name="profile"/>Privacy & data requests</span><b>⌄</b></summary><div className="accordionBody"><PrivacyPage isAdmin={canReviewPrivacy}/></div></details>
-      {isAdmin&&<details className="settingsAccordion"><summary><span><Icon name="settings"/>Security & active sessions</span><b>⌄</b></summary><div className="accordionBody"><SecurityPage/></div></details>
+      <details className="settingsAccordion"><summary><span><Icon name="profile"/>Privacy & data requests</span><b>⌄</b></summary><div className="accordionBody"><PrivacyPage isAdmin={canReviewPrivacy}/></div></details>
+      <details className="settingsAccordion"><summary><span><Icon name="settings"/>Security & active sessions</span><b>⌄</b></summary><div className="accordionBody"><SecurityPage/></div></details>
       {isAdmin&&<div className="settingsGroupHeading"><span>School administration</span><small>Administrator only</small></div>}
       {isAdmin&&<details className="settingsAccordion">
         <summary><span><Icon name="school"/>School Logo</span><b>⌄</b></summary>
