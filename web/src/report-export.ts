@@ -97,3 +97,67 @@ export async function exportAttendanceReport(format:Format, month:string, rows:A
     await saveReport(pdf.output("blob"),fileName,format);
   }
 }
+
+export type DetailedAttendanceRecord={
+  date:string;class_name:string;class_id:number;grade_name:string|null;
+  admission_number:string;full_name:string;status:"PRESENT"|"ABSENT";
+};
+
+export async function exportDetailedAttendance(
+  format:"pdf"|"docx",start:string,end:string,rows:DetailedAttendanceRecord[]
+):Promise<void>{
+  if(!rows.length)throw new Error("Generate a report with attendance records before exporting.");
+  const filename="maestro-attendance-"+start+"-to-"+end+"."+format;
+  const present=rows.filter(r=>r.status==="PRESENT").length;
+  const groups=new Map<string,DetailedAttendanceRecord[]>();
+  for(const r of rows){
+    const key=r.date+"|"+r.class_id;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key)!.push(r);
+  }
+  if(format==="docx"){
+    const children:any[]=[
+      new Paragraph({text:"MAESTRO | STUDENT ATTENDANCE REPORT",heading:HeadingLevel.HEADING_1}),
+      new Paragraph({text:"Date range: "+start+" to "+end}),
+      new Paragraph({text:"Records: "+rows.length+"    Present: "+present+"    Absent: "+(rows.length-present)}),
+    ];
+    for(const group of groups.values()){
+      const r=group[0];
+      children.push(new Paragraph({text:"Grade: "+(r.grade_name||"—")+"    Class: "+r.class_name+"    Date: "+r.date,heading:HeadingLevel.HEADING_2}));
+      const cell=(value:string,bold=false)=>new TableCell({children:[new Paragraph({children:[new TextRun({text:value,bold})]})]});
+      children.push(new Table({width:{size:100,type:WidthType.PERCENTAGE},rows:[
+        new TableRow({children:["Admission","Name","Status"].map(x=>cell(x,true))}),
+        ...group.map(x=>new TableRow({children:[cell(text(x.admission_number)),cell(text(x.full_name)),cell(x.status)]}))
+      ]}));
+      children.push(new Paragraph({text:" "}));
+    }
+    const document=new Document({sections:[{children}]});
+    await saveReport(await Packer.toBlob(document),filename,format);
+    return;
+  }
+  const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const margin=14,maxY=280;let y=18;
+  const ensure=(height:number)=>{if(y+height>maxY){pdf.addPage();y=18}};
+  const draw=(value:string,x:number,size=10,bold=false)=>{
+    pdf.setFont("helvetica",bold?"bold":"normal");pdf.setFontSize(size);
+    pdf.text(value.replace(/[^\\x20-\\x7e]/g,"?"),x,y);
+  };
+  draw("MAESTRO | STUDENT ATTENDANCE REPORT",margin,15,true);y+=11;
+  draw("Date range: "+start+" to "+end,margin,10);y+=7;
+  draw("Records: "+rows.length+" | Present: "+present+" | Absent: "+(rows.length-present),margin,10);y+=12;
+  for(const group of groups.values()){
+    const first=group[0];ensure(24);
+    draw("Grade: "+text(first.grade_name||"—")+"   Class: "+text(first.class_name)+"   Date: "+first.date,margin,10,true);y+=8;
+    draw("Admission",margin,9,true);draw("Name",margin+38,9,true);draw("Status",margin+143,9,true);y+=7;
+    for(const row of group){
+      ensure(8);
+      draw(text(row.admission_number).slice(0,21),margin,8);
+      draw(text(row.full_name).slice(0,46),margin+38,8);
+      draw(row.status,margin+143,8);
+      y+=7;
+    }
+    y+=7;
+  }
+  pdf.setProperties({title:"Maestro attendance report "+start+" to "+end});
+  await saveReport(pdf.output("blob"),filename,format);
+}
