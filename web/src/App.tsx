@@ -1,3 +1,4 @@
+import {exportAttendanceReport} from "./report-export";
 import PlatformOwnerPortal from "./PlatformOwnerPortal";
 import {FormEvent,useEffect,useState} from "react";
 const API=import.meta.env.VITE_API_BASE_URL||"http://localhost:8787";
@@ -33,7 +34,7 @@ const translations:Record<MaestroLanguage,Record<string,string>>={
   si:{home:"මුල් පිටුව",history:"ඉතිහාසය",students:"සිසුන්",settings:"සැකසුම්",profile:"පැතිකඩ",attendance:"පැමිණීම",reports:"වාර්තා",welcome:"නැවත සාදරයෙන් පිළිගනිමු",language:"භාෂාව",update:"යාවත්කාලීන පරීක්ෂා කරන්න"},
   ta:{home:"முகப்பு",history:"வரலாறு",students:"மாணவர்கள்",settings:"அமைப்புகள்",profile:"சுயவிவரம்",attendance:"வருகை",reports:"அறிக்கைகள்",welcome:"மீண்டும் வருக",language:"மொழி",update:"புதுப்பிப்பைச் சரிபார்க்கவும்"}
 };
-declare global {interface Window {MaestroAndroid?:{checkForUpdates:()=>void;getBuildNumber:()=>number}}}
+declare global {interface Window {MaestroAndroid?:{checkForUpdates:()=>void;getBuildNumber:()=>number;saveReportFile?:(filename:string,mimeType:string,base64:string)=>void}}}
 
 type C={id:number;display_name:string;grade_id:number};type S={id:number;admission_number:string;full_name:string;grade_id:number|null;class_id:number|null;grade_name?:string|null;class_name?:string|null};
 export default function App(){return window.location.hash==="#platform"?<PlatformOwnerPortal/>:<SchoolApp/>}
@@ -160,8 +161,14 @@ function ReportsPage(){
   const present=filtered.reduce((n,r)=>n+Number(r.present_count||0),0),absent=filtered.reduce((n,r)=>n+Number(r.absent_count||0),0);
   const pct=present+absent?Math.round(present/(present+absent)*100):0;
   const grouped=Object.values(filtered.reduce((acc:Record<string,any>,r:any)=>{const key=String(r.class_name||"Class");if(!acc[key])acc[key]={name:key,present:0,absent:0,submissions:0};acc[key].present+=Number(r.present_count||0);acc[key].absent+=Number(r.absent_count||0);acc[key].submissions++;return acc},{}));
-  function downloadCsv(){const header=["Date","Class","Present","Absent","Submitted by"],data=[header,...filtered.map(r=>[r.date,r.class_name,r.present_count||0,r.absent_count||0,r.submitted_by||""])];const csv=data.map(line=>line.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(",")).join("\r\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}));a.download="maestro-attendance-"+month+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-  return <div className="reportsPage"><div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Insights</span><h2>Attendance reports</h2></div><div className="sectionIcon"><Icon name="history"/></div></div><label>Reporting month<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label><p className="settingsHint">Based on submitted attendance history available to your account.</p>{error&&<div className="error">{error}</div>}</div><div className="stats"><Card t="Submissions" v={filtered.length} icon="classes"/><Card t="Present" v={present} icon="present"/><Card t="Absent" v={absent} icon="absent"/><Card t="Attendance rate" v={pct+"%"} icon="check"/></div><div className="card sectionCard"><div className="sectionTitle"><h3>Class comparison</h3><button type="button" onClick={downloadCsv} disabled={!filtered.length}>Export CSV</button></div>{grouped.map((r:any)=><div className="reportClass" key={r.name}><div className="row"><b>{r.name}</b><span>{r.present+r.absent?Math.round(100*r.present/(r.present+r.absent)):0}% · {r.submissions} submissions</span></div><div className="reportTrack"><div style={{width:(r.present+r.absent?100*r.present/(r.present+r.absent):0)+"%"}}/></div></div>)}{!grouped.length&&<p className="settingsHint">No attendance submissions found for this month.</p>}</div></div>
+  const[exporting,setExporting]=useState<"pdf"|"docx"|null>(null);
+  async function downloadReport(format:"pdf"|"docx"){
+    setError("");setExporting(format);
+    try{await exportAttendanceReport(format,month,filtered)}
+    catch(e:any){setError(e?.message||"Report export failed.")}
+    finally{setExporting(null)}
+  }
+  return <div className="reportsPage"><div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Insights</span><h2>Attendance reports</h2></div><div className="sectionIcon"><Icon name="history"/></div></div><label>Reporting month<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label><p className="settingsHint">Based on submitted attendance history available to your account.</p>{error&&<div className="error">{error}</div>}</div><div className="stats"><Card t="Submissions" v={filtered.length} icon="classes"/><Card t="Present" v={present} icon="present"/><Card t="Absent" v={absent} icon="absent"/><Card t="Attendance rate" v={pct+"%"} icon="check"/></div><div className="card sectionCard"><div className="sectionTitle"><h3>Class comparison</h3><div className="reportExportActions"><button type="button" onClick={()=>void downloadReport("pdf")} disabled={!filtered.length||!!exporting}>{exporting==="pdf"?"Preparing PDF…":"Export PDF"}</button><button type="button" onClick={()=>void downloadReport("docx")} disabled={!filtered.length||!!exporting}>{exporting==="docx"?"Preparing document…":"Export Word (.docx)"}</button></div></div>{grouped.map((r:any)=><div className="reportClass" key={r.name}><div className="row"><b>{r.name}</b><span>{r.present+r.absent?Math.round(100*r.present/(r.present+r.absent)):0}% · {r.submissions} submissions</span></div><div className="reportTrack"><div style={{width:(r.present+r.absent?100*r.present/(r.present+r.absent):0)+"%"}}/></div></div>)}{!grouped.length&&<p className="settingsHint">No attendance submissions found for this month.</p>}</div></div>
 }
 
 function StudentsPage({classes,done}:{classes:C[];done:(message:string)=>void}){
