@@ -7,6 +7,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
+import android.widget.Toast
 import android.os.Environment
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
@@ -31,6 +33,7 @@ class MainActivity : AppCompatActivity() {
   private lateinit var updater: UpdateManager
   private var filePathCallback: ValueCallback<Array<Uri>>? = null
   private var lastUpdateCheckAt = 0L
+  private var pendingReportBytes: ByteArray? = null
 
   inner class NativeBridge {
     @JavascriptInterface fun checkForUpdates() {
@@ -40,7 +43,50 @@ class MainActivity : AppCompatActivity() {
       }
     }
     @JavascriptInterface fun getBuildNumber(): Int = BuildConfig.VERSION_CODE
+    @JavascriptInterface fun saveReportFile(fileName: String, mimeType: String, encodedData: String) {
+      try {
+        if (fileName.length > 120 || !Regex("^[A-Za-z0-9._-]+\\.(pdf|docx)$", RegexOption.IGNORE_CASE).matches(fileName)) throw IllegalArgumentException("Invalid report filename")
+        if (mimeType !in listOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) throw IllegalArgumentException("Unsupported report format")
+        if (encodedData.length > 16 * 1024 * 1024) throw IllegalArgumentException("Report exceeds 12 MB limit")
+        val bytes = Base64.decode(encodedData, Base64.DEFAULT)
+        runOnUiThread {
+          if (pendingReportBytes != null) {
+            Toast.makeText(this@MainActivity, "Finish saving the previous report first.", Toast.LENGTH_LONG).show()
+            return@runOnUiThread
+          }
+          pendingReportBytes = bytes
+          val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mimeType
+            putExtra(Intent.EXTRA_TITLE, fileName)
+          }
+          try { reportSaveLauncher.launch(intent) }
+          catch (e: Exception) {
+            pendingReportBytes = null
+            Toast.makeText(this@MainActivity, "Could not open document picker.", Toast.LENGTH_LONG).show()
+          }
+        }
+      } catch (e: Exception) {
+        runOnUiThread { Toast.makeText(this@MainActivity, e.message ?: "Invalid report file.", Toast.LENGTH_LONG).show() }
+      }
+    }
   }
+
+  private val reportSaveLauncher =
+    registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+      val bytes = pendingReportBytes
+      pendingReportBytes = null
+      val uri = result.data?.data
+      if (result.resultCode == RESULT_OK && uri != null && bytes != null) {
+        try {
+          contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+            ?: throw IllegalStateException("Unable to open destination")
+          Toast.makeText(this, "Report saved successfully.", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+          Toast.makeText(this, "Failed to save report: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+      }
+    }
 
   private val fileChooserLauncher =
     registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
