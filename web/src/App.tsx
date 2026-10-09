@@ -1,4 +1,4 @@
-import {exportAttendanceReport} from "./report-export";
+import {exportDetailedAttendance,type DetailedAttendanceRecord} from "./report-export";
 import PlatformOwnerPortal from "./PlatformOwnerPortal";
 import {FormEvent,useEffect,useState} from "react";
 const API=import.meta.env.VITE_API_BASE_URL||"http://localhost:8787";
@@ -155,20 +155,64 @@ function Attendance({students,classes,done}:{students:S[];classes:C[];done:()=>v
 function History(){const[rows,setRows]=useState<any[]>([]);useEffect(()=>{api("/api/attendance/history").then(setRows)},[]);return <div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Records</span><h2>Attendance History</h2></div><div className="sectionIcon"><Icon name="history"/></div></div>{rows.length?rows.map(r=><div className="row historyRow" key={r.id}><div><b>{r.class_name}</b><small>{r.date} · {r.submitted_by}</small></div><div className="historyCounts"><span className="miniGood">{r.present_count||0} P</span><span className="miniBad">{r.absent_count||0} A</span></div></div>):<div className="emptyState"><Icon name="history"/><b>No history yet</b><span>Submitted attendance will appear here.</span></div>}</div>}
 
 function ReportsPage(){
-  const[rows,setRows]=useState<any[]>([]),[error,setError]=useState(""),[month,setMonth]=useState(new Date().toISOString().slice(0,7));
-  useEffect(()=>{api("/api/attendance/history").then(r=>setRows(Array.isArray(r)?r:[])).catch(e=>setError(e.message))},[]);
-  const filtered=rows.filter(r=>String(r.date||"").startsWith(month));
-  const present=filtered.reduce((n,r)=>n+Number(r.present_count||0),0),absent=filtered.reduce((n,r)=>n+Number(r.absent_count||0),0);
-  const pct=present+absent?Math.round(present/(present+absent)*100):0;
-  const grouped=Object.values(filtered.reduce((acc:Record<string,any>,r:any)=>{const key=String(r.class_name||"Class");if(!acc[key])acc[key]={name:key,present:0,absent:0,submissions:0};acc[key].present+=Number(r.present_count||0);acc[key].absent+=Number(r.absent_count||0);acc[key].submissions++;return acc},{}));
-  const[exporting,setExporting]=useState<"pdf"|"docx"|null>(null);
-  async function downloadReport(format:"pdf"|"docx"){
+  const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")};
+  const[dates,setDates]=useState({start:today().slice(0,4)+"-01-01",end:today()});
+  const[reportType,setReportType]=useState("attendance");
+  const[classId,setClassId]=useState("0");
+  const[classes,setClasses]=useState<{id:number;grade_id:number;display_name:string;grade_name?:string}[]>([]);
+  const[report,setReport]=useState<{rows:DetailedAttendanceRecord[];start:string;end:string}|null>(null);
+  const[loading,setLoading]=useState(false),[exporting,setExporting]=useState<"pdf"|"docx"|null>(null);
+  const[expanded,setExpanded]=useState(false),[error,setError]=useState("");
+  useEffect(()=>{api("/api/classes").then(r=>setClasses(Array.isArray(r)?r:[])).catch(e=>setError(e.message))},[]);
+  const invalidate=()=>{setReport(null);setExpanded(false);setError("")};
+  async function generate(){
+    setError("");setReport(null);setExpanded(false);
+    if(!dates.start||!dates.end||dates.start>dates.end){setError("Select a valid date range.");return}
+    if(reportType==="notes"){setError("Student notes reporting is not available in this Maestro backend yet.");return}
+    setLoading(true);
+    try{
+      const params=new URLSearchParams({start:dates.start,end:dates.end,class_id:classId});
+      const data=await api("/api/reports/preview?"+params.toString());
+      if(!Array.isArray(data.rows))throw new Error("The server did not return a valid report.");
+      setReport({rows:data.rows,start:dates.start,end:dates.end});
+    }catch(e:any){setError(e.message||"Could not generate report. The backend may need updating.")}
+    finally{setLoading(false)}
+  }
+  async function download(format:"pdf"|"docx"){
+    if(!report)return;
     setError("");setExporting(format);
-    try{await exportAttendanceReport(format,month,filtered)}
-    catch(e:any){setError(e?.message||"Report export failed.")}
+    try{await exportDetailedAttendance(format,report.start,report.end,report.rows)}
+    catch(e:any){setError(e.message||"Unable to export the report.")}
     finally{setExporting(null)}
   }
-  return <div className="reportsPage"><div className="card sectionCard"><div className="sectionTitle"><div><span className="eyebrow">Insights</span><h2>Attendance reports</h2></div><div className="sectionIcon"><Icon name="history"/></div></div><label>Reporting month<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label><p className="settingsHint">Based on submitted attendance history available to your account.</p>{error&&<div className="error">{error}</div>}</div><div className="stats"><Card t="Submissions" v={filtered.length} icon="classes"/><Card t="Present" v={present} icon="present"/><Card t="Absent" v={absent} icon="absent"/><Card t="Attendance rate" v={pct+"%"} icon="check"/></div><div className="card sectionCard"><div className="sectionTitle"><h3>Class comparison</h3><div className="reportExportActions"><button type="button" onClick={()=>void downloadReport("pdf")} disabled={!filtered.length||!!exporting}>{exporting==="pdf"?"Preparing PDF…":"Export PDF"}</button><button type="button" onClick={()=>void downloadReport("docx")} disabled={!filtered.length||!!exporting}>{exporting==="docx"?"Preparing document…":"Export Word (.docx)"}</button></div></div>{grouped.map((r:any)=><div className="reportClass" key={r.name}><div className="row"><b>{r.name}</b><span>{r.present+r.absent?Math.round(100*r.present/(r.present+r.absent)):0}% · {r.submissions} submissions</span></div><div className="reportTrack"><div style={{width:(r.present+r.absent?100*r.present/(r.present+r.absent):0)+"%"}}/></div></div>)}{!grouped.length&&<p className="settingsHint">No attendance submissions found for this month.</p>}</div></div>
+  const groups=new Map<string,DetailedAttendanceRecord[]>();
+  for(const record of report?.rows||[]){
+    const key=record.date+"|"+record.class_id;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key)!.push(record);
+  }
+  return <div className="reportsPage reportGenerator">
+    <div className="reportIntro"><h2>Reports</h2><p>Generate attendance reports for a selected date range, preview student records, and export as Word or PDF.</p></div>
+    <section className="card reportFilterCard">
+      <label>Start Date<input type="date" value={dates.start} max={dates.end} onChange={e=>{setDates(d=>({...d,start:e.target.value}));invalidate()}}/></label>
+      <label>End Date<input type="date" value={dates.end} min={dates.start} onChange={e=>{setDates(d=>({...d,end:e.target.value}));invalidate()}}/></label>
+      <label>What to Export<select value={reportType} onChange={e=>{setReportType(e.target.value);invalidate()}}><option value="attendance">Student Attendance</option><option value="notes">Student Notes (not available yet)</option></select></label>
+      <label>Class / Grade<select value={classId} onChange={e=>{setClassId(e.target.value);invalidate()}}><option value="0">All Grades</option>{classes.map(c=><option key={c.id} value={String(c.id)}>{c.display_name}{c.grade_name?" · Grade "+c.grade_name:""}</option>)}</select></label>
+      <button className="reportGenerateButton" type="button" onClick={()=>void generate()} disabled={loading}>{loading?"Generating report…":"Generate Report"}</button>
+    </section>
+    {error&&<div className="error reportError" role="alert">{error}</div>}
+    {report&&<><section className="card reportResultCard">
+      <div className="reportResultHeading"><strong>Student Attendance Report</strong><small>{report.start} → {report.end} · {report.rows.length} records</small></div>
+      <button className="reportExpandButton" type="button" aria-expanded={expanded} onClick={()=>setExpanded(v=>!v)} disabled={!report.rows.length}>Export <span aria-hidden="true">{expanded?"▴":"▾"}</span></button>
+      {expanded&&<div className="reportExportMenu"><button type="button" onClick={()=>void download("docx")} disabled={!!exporting}>{exporting==="docx"?"Preparing document…":"Document"} <small>.docx</small></button><button type="button" onClick={()=>void download("pdf")} disabled={!!exporting}>{exporting==="pdf"?"Preparing PDF…":"PDF"} <small>.pdf</small></button></div>}
+      {!report.rows.length&&<p className="settingsHint">No attendance records were found for the chosen filters.</p>}
+    </section>
+    {[...groups.entries()].map(([key,items])=><section className="card reportPreviewCard" key={key}>
+      <div className="reportPreviewMeta"><div>Grade: <b>{items[0].grade_name||"—"}</b></div><div>Class: <b>{items[0].class_name}</b></div><div>Date: <b>{items[0].date}</b></div></div>
+      <div className="reportTableScroll"><table className="reportPreviewTable"><thead><tr><th>Admission</th><th>Name</th><th>Status</th></tr></thead><tbody>{items.map((r,i)=><tr key={r.admission_number+"-"+i}><td>{r.admission_number}</td><td>{r.full_name}</td><td><span className={r.status==="PRESENT"?"reportPresent":"reportAbsent"}>{r.status}</span></td></tr>)}</tbody></table></div>
+    </section>)}
+    </>}
+  </div>
 }
 
 function StudentsPage({classes,done}:{classes:C[];done:(message:string)=>void}){
