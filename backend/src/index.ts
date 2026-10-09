@@ -746,6 +746,32 @@ export default {
         return json({ ok: true });
       }
 
+      if (path === "/api/reports/preview" && req.method === "GET") {
+        const start = url.searchParams.get("start") || "";
+        const end = url.searchParams.get("end") || "";
+        const classId = Number(url.searchParams.get("class_id") || "0");
+        const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/;
+        if (!datePattern.test(start) || !datePattern.test(end) || start > end) return fail("Select a valid start and end date.");
+        if (classId && (!Number.isSafeInteger(classId) || !await classAllowed(env, auth, classId))) return fail("You cannot access this class.",403);
+        const sql = `SELECT sess.date, c.display_name class_name, c.id class_id, g.name grade_name,
+            st.admission_number, st.full_name, ar.status
+          FROM attendance_records ar
+          JOIN attendance_sessions sess ON sess.id=ar.session_id AND sess.school_id=ar.school_id
+          JOIN classes c ON c.id=sess.class_id AND c.school_id=sess.school_id
+          LEFT JOIN grades g ON g.id=c.grade_id AND g.school_id=c.school_id
+          JOIN students st ON st.id=ar.student_id AND st.school_id=ar.school_id
+          WHERE ar.school_id=? AND sess.date BETWEEN ? AND ?
+            AND (?=0 OR c.id=?)
+            ${auth.role === "TEACHER" ? "AND c.id IN (SELECT class_id FROM teacher_class_assignments WHERE school_id=? AND teacher_id=?)" : ""}
+          ORDER BY sess.date DESC,c.display_name,st.admission_number
+          LIMIT 5001`;
+        const args:any[]=[auth.schoolId,start,end,classId,classId];
+        if(auth.role==="TEACHER")args.push(auth.schoolId,auth.userId);
+        const data=await env.DB.prepare(sql).bind(...args).all();
+        if(data.results.length>5000) return fail("Too many records. Select a shorter date range or a class (maximum 5,000 records).",413);
+        return json({rows:data.results,start,end});
+      }
+
       if (path === "/api/reports" && req.method === "GET") {
         const start = url.searchParams.get("start") || "0000-00-00";
         const end = url.searchParams.get("end") || "9999-12-31";
