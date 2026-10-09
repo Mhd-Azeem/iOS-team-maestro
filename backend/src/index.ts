@@ -1,7 +1,10 @@
+import {handleOwnerRequest} from "./platform-owner";
 export interface Env {
   DB: D1Database;
   PLATFORM_APPROVAL_KEY?: string;
   PLATFORM_ALLOWED_ORIGIN?: string;
+  PLATFORM_OWNER_PASSWORD_SALT?: string;
+  PLATFORM_OWNER_PASSWORD_HASH?: string;
 }
 
 type Auth = {
@@ -172,6 +175,10 @@ async function registerSchool(req: Request, env: Env): Promise<Response> {
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+    const requestUrl = new URL(req.url);
+    if(requestUrl.pathname.startsWith("/api/owner/")){
+      try{return await handleOwnerRequest(req,env,requestUrl)}catch(error){console.error("Platform owner API failure",error);return fail("Platform service error.",500)}
+    }
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
