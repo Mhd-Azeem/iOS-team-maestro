@@ -202,16 +202,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     web.setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-      val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-      val request = DownloadManager.Request(Uri.parse(url))
-        .setMimeType(mimeType)
-        .addRequestHeader("User-Agent", userAgent)
-        .addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url))
-        .setTitle(fileName)
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-
-      (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+      val uri = Uri.parse(url)
+      if (uri.scheme !in listOf("http", "https")) {
+        Toast.makeText(this, "Use the report Export button to save this document.", Toast.LENGTH_LONG).show()
+        return@DownloadListener
+      }
+      try {
+        val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+        val request = DownloadManager.Request(uri)
+          .setMimeType(mimeType)
+          .addRequestHeader("User-Agent", userAgent)
+          .setTitle(fileName)
+          .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+          .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+        CookieManager.getInstance().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
+        (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+      } catch (e: Exception) {
+        Toast.makeText(this, "Unable to download this file. Use report Export to save reports.", Toast.LENGTH_LONG).show()
+      }
     })
 
     web.loadUrl(BuildConfig.APP_URL)

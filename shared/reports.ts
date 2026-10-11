@@ -30,11 +30,12 @@ export function summarizeAttendance(rows:AttendanceRecord[]){
   }
   return {totals,students:[...students.values()].sort((a,b)=>a.admission_number.localeCompare(b.admission_number)),classes:[...classes.values()].sort((a,b)=>a.class_name.localeCompare(b.class_name))};
 }
-export function reportSections(rows:AttendanceRecord[],type:ReportType){
+export type ReportSection={title:string;headers:string[];rows:string[][];meta?:{grade:string;className:string;date:string}};
+export function reportSections(rows:AttendanceRecord[],type:ReportType):ReportSection[]{
   const analytics=summarizeAttendance(rows);
-  if(type==='students')return [{title:reportTitles.students,headers:['Admission','Name','Recorded days','Present','Absent','Attendance %'],rows:analytics.students.map(r=>[r.admission_number,r.full_name,String(r.total),String(r.present),String(r.absent),r.percentage.toFixed(1)+'%'])}];
+  if(type==='students')return [{title:reportTitles.students,headers:['Admission','Name','Records','Present','Absent','Attendance %'],rows:analytics.students.map(r=>[r.admission_number,r.full_name,String(r.total),String(r.present),String(r.absent),r.percentage.toFixed(1)+'%'])}];
   if(type==='classes')return [{title:reportTitles.classes,headers:['Grade','Class','Records','Present','Absent','Attendance %'],rows:analytics.classes.map(r=>[r.grade_name||'—',r.class_name,String(r.total),String(r.present),String(r.absent),r.percentage.toFixed(1)+'%'])}];
   const groups=new Map<string,AttendanceRecord[]>();
   for(const row of [...rows].sort((a,b)=>a.class_name.localeCompare(b.class_name)||a.class_id-b.class_id||b.date.localeCompare(a.date)||a.admission_number.localeCompare(b.admission_number))){const key=row.class_id+'|'+row.date;if(!groups.has(key))groups.set(key,[]);groups.get(key)!.push(row)}
-  return [...groups.values()].map(group=>({title:'Grade: '+(group[0].grade_name||'—')+'    Class: '+group[0].class_name+'    Date: '+group[0].date,headers:['Admission','Name','Status'],rows:group.map(r=>[r.admission_number,r.full_name,r.status])}));
+  return [...groups.values()].map(group=>({meta:{grade:group[0].grade_name||'—',className:group[0].class_name,date:group[0].date},title:'Grade: '+(group[0].grade_name||'—')+'    Class: '+group[0].class_name+'    Date: '+group[0].date,headers:['Admission','Name','Status'],rows:group.map(r=>[r.admission_number,r.full_name,r.status])}));
 }

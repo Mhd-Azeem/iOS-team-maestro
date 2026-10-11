@@ -754,7 +754,7 @@ export default {
           if('error' in report)return fail(report.error || "Report failed.",report.status);
           const analytics=summarizeAttendance(report.rows);
           if(path === "/api/reports")return json({
-            headers:["Admission","Name","Total recorded days","Present","Absent","Attendance %"],
+            headers:["Admission","Name","Total records","Present","Absent","Attendance %"],
             rows:analytics.students.map(r=>[r.admission_number,r.full_name,r.total,r.present,r.absent,r.percentage.toFixed(1)+"%"]),
             analytics
           });
