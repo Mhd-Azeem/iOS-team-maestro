@@ -1,3 +1,5 @@
+import {readAttendanceReport} from "./reports";
+import {summarizeAttendance} from "../../shared/reports";
 import {handleOwnerRequest} from "./platform-owner";
 export interface Env {
   DB: D1Database;
@@ -746,62 +748,18 @@ export default {
         return json({ ok: true });
       }
 
-      if (path === "/api/reports/preview" && req.method === "GET") {
-        const start = url.searchParams.get("start") || "";
-        const end = url.searchParams.get("end") || "";
-        const classId = Number(url.searchParams.get("class_id") || "0");
-        const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/;
-        if (!datePattern.test(start) || !datePattern.test(end) || start > end) return fail("Select a valid start and end date.");
-        if (classId && (!Number.isSafeInteger(classId) || !await classAllowed(env, auth, classId))) return fail("You cannot access this class.",403);
-        const sql = `SELECT sess.date, c.display_name class_name, c.id class_id, g.name grade_name,
-            st.admission_number, st.full_name, ar.status
-          FROM attendance_records ar
-          JOIN attendance_sessions sess ON sess.id=ar.session_id AND sess.school_id=ar.school_id
-          JOIN classes c ON c.id=sess.class_id AND c.school_id=sess.school_id
-          LEFT JOIN grades g ON g.id=c.grade_id AND g.school_id=c.school_id
-          JOIN students st ON st.id=ar.student_id AND st.school_id=ar.school_id
-          WHERE ar.school_id=? AND sess.date BETWEEN ? AND ?
-            AND (?=0 OR c.id=?)
-            ${auth.role === "TEACHER" ? "AND c.id IN (SELECT class_id FROM teacher_class_assignments WHERE school_id=? AND teacher_id=?)" : ""}
-          ORDER BY sess.date DESC,c.display_name,st.admission_number
-          LIMIT 5001`;
-        const args:any[]=[auth.schoolId,start,end,classId,classId];
-        if(auth.role==="TEACHER")args.push(auth.schoolId,auth.userId);
-        const data=await env.DB.prepare(sql).bind(...args).all();
-        if(data.results.length>5000) return fail("Too many records. Select a shorter date range or a class (maximum 5,000 records).",413);
-        return json({rows:data.results,start,end});
-      }
-
-      if (path === "/api/reports" && req.method === "GET") {
-        const start = url.searchParams.get("start") || "0000-00-00";
-        const end = url.searchParams.get("end") || "9999-12-31";
-        const rows = await env.DB.prepare(
-          `SELECT s.admission_number,s.full_name,
-                  COALESCE(c.display_name,'Unassigned') display_name,
-                  COUNT(CASE WHEN ss.id IS NOT NULL THEN 1 END) total,
-                  SUM(CASE WHEN ss.id IS NOT NULL AND ar.status='PRESENT' THEN 1 ELSE 0 END) present,
-                  SUM(CASE WHEN ss.id IS NOT NULL AND ar.status='ABSENT' THEN 1 ELSE 0 END) absent
-           FROM students s
-           LEFT JOIN classes c ON c.id=s.class_id AND c.school_id=s.school_id
-           LEFT JOIN attendance_records ar ON ar.student_id=s.id AND ar.school_id=s.school_id
-           LEFT JOIN attendance_sessions ss ON ss.id=ar.session_id AND ss.school_id=s.school_id AND ss.date BETWEEN ? AND ?
-           WHERE s.school_id=?
-           GROUP BY s.id
-           ORDER BY COALESCE(c.display_name,''),s.admission_number`
-        ).bind(start, end, auth.schoolId).all<any>();
-
-        return json({
-          headers: ["Admission","Name","Class","Total Days","Present","Absent","Attendance %"],
-          rows: rows.results.map((r) => [
-            r.admission_number,
-            r.full_name,
-            r.display_name,
-            r.total || 0,
-            r.present || 0,
-            r.absent || 0,
-            r.total ? ((r.present / r.total) * 100).toFixed(1) + "%" : "0.0%"
-          ])
-        });
+      if ((path === "/api/reports/preview" || path === "/api/reports") && req.method === "GET") {
+        try {
+          const report=await readAttendanceReport(env.DB,auth,url.searchParams);
+          if('error' in report)return fail(report.error || "Report failed.",report.status);
+          const analytics=summarizeAttendance(report.rows);
+          if(path === "/api/reports")return json({
+            headers:["Admission","Name","Total records","Present","Absent","Attendance %"],
+            rows:analytics.students.map(r=>[r.admission_number,r.full_name,r.total,r.present,r.absent,r.percentage.toFixed(1)+"%"]),
+            analytics
+          });
+          return json({...report,analytics});
+        } catch(error) { return fail("Report generation failed. Please try again.",500); }
       }
 
       if (path === "/api/subjects" && req.method === "GET") {
@@ -923,3 +881,4 @@ export default {
     }
   }
 };
+

@@ -1,5 +1,6 @@
 package com.azeem.maestroattendance
 
+import java.io.File
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
@@ -33,7 +34,7 @@ class MainActivity : AppCompatActivity() {
   private lateinit var updater: UpdateManager
   private var filePathCallback: ValueCallback<Array<Uri>>? = null
   private var lastUpdateCheckAt = 0L
-  private var pendingReportBytes: ByteArray? = null
+  private var pendingReportFile: File? = null
 
   inner class NativeBridge {
     @JavascriptInterface fun checkForUpdates() {
@@ -45,16 +46,20 @@ class MainActivity : AppCompatActivity() {
     @JavascriptInterface fun getBuildNumber(): Int = BuildConfig.VERSION_CODE
     @JavascriptInterface fun saveReportFile(fileName: String, mimeType: String, encodedData: String) {
       try {
-        if (fileName.length > 120 || !Regex("^[A-Za-z0-9._-]+\\.(pdf|docx)$", RegexOption.IGNORE_CASE).matches(fileName)) throw IllegalArgumentException("Invalid report filename")
-        if (mimeType !in listOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) throw IllegalArgumentException("Unsupported report format")
-        if (encodedData.length > 16 * 1024 * 1024) throw IllegalArgumentException("Report exceeds 12 MB limit")
+        if (encodedData.isEmpty() || encodedData.length > ReportFilePolicy.MAX_BASE64_CHARS) throw IllegalArgumentException("Report exceeds 12 MB limit")
         val bytes = Base64.decode(encodedData, Base64.DEFAULT)
+        ReportFilePolicy.validate(fileName, mimeType, bytes.size)
         runOnUiThread {
-          if (pendingReportBytes != null) {
+          if (pendingReportFile != null) {
             Toast.makeText(this@MainActivity, "Finish saving the previous report first.", Toast.LENGTH_LONG).show()
             return@runOnUiThread
           }
-          pendingReportBytes = bytes
+          try {
+            pendingReportFile = File.createTempFile("maestro-report-", ".tmp", cacheDir).apply { writeBytes(bytes) }
+          } catch (e: Exception) {
+            Toast.makeText(this@MainActivity, "Could not prepare report file.", Toast.LENGTH_LONG).show()
+            return@runOnUiThread
+          }
           val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = mimeType
@@ -62,7 +67,8 @@ class MainActivity : AppCompatActivity() {
           }
           try { reportSaveLauncher.launch(intent) }
           catch (e: Exception) {
-            pendingReportBytes = null
+            pendingReportFile?.delete()
+            pendingReportFile = null
             Toast.makeText(this@MainActivity, "Could not open document picker.", Toast.LENGTH_LONG).show()
           }
         }
@@ -74,18 +80,21 @@ class MainActivity : AppCompatActivity() {
 
   private val reportSaveLauncher =
     registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-      val bytes = pendingReportBytes
-      pendingReportBytes = null
+      val source = pendingReportFile
+      pendingReportFile = null
       val uri = result.data?.data
-      if (result.resultCode == RESULT_OK && uri != null && bytes != null) {
-        try {
-          contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-            ?: throw IllegalStateException("Unable to open destination")
-          Toast.makeText(this, "Report saved successfully.", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-          Toast.makeText(this, "Failed to save report: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-      }
+      if (result.resultCode == RESULT_OK && uri != null && source != null) {
+        Thread {
+          try {
+            contentResolver.openOutputStream(uri, "wt")?.use { destination ->
+              source.inputStream().use { it.copyTo(destination) }
+            } ?: throw IllegalStateException("Unable to open destination")
+            runOnUiThread { Toast.makeText(this, "Report saved successfully.", Toast.LENGTH_SHORT).show() }
+          } catch (e: Exception) {
+            runOnUiThread { Toast.makeText(this, "Failed to save report: ${e.message}", Toast.LENGTH_LONG).show() }
+          } finally { source.delete() }
+        }.start()
+      } else { source?.delete() }
     }
 
   private val fileChooserLauncher =
@@ -96,8 +105,18 @@ class MainActivity : AppCompatActivity() {
       filePathCallback = null
     }
 
+  override fun onSaveInstanceState(outState: Bundle) {
+    pendingReportFile?.let { outState.putString("pendingReport", it.name) }
+    super.onSaveInstanceState(outState)
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    savedInstanceState?.getString("pendingReport")?.let { name ->
+      if (Regex("^maestro-report-[A-Za-z0-9-]+\\.tmp$").matches(name)) {
+        pendingReportFile = File(cacheDir, name).takeIf { it.isFile }
+      }
+    }
 
     WindowCompat.setDecorFitsSystemWindows(window, false)
     WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -183,16 +202,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     web.setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-      val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-      val request = DownloadManager.Request(Uri.parse(url))
-        .setMimeType(mimeType)
-        .addRequestHeader("User-Agent", userAgent)
-        .addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url))
-        .setTitle(fileName)
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-
-      (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+      val uri = Uri.parse(url)
+      if (uri.scheme !in listOf("http", "https")) {
+        Toast.makeText(this, "Use the report Export button to save this document.", Toast.LENGTH_LONG).show()
+        return@DownloadListener
+      }
+      try {
+        val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+        val request = DownloadManager.Request(uri)
+          .setMimeType(mimeType)
+          .addRequestHeader("User-Agent", userAgent)
+          .setTitle(fileName)
+          .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+          .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+        CookieManager.getInstance().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
+        (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+      } catch (e: Exception) {
+        Toast.makeText(this, "Unable to download this file. Use report Export to save reports.", Toast.LENGTH_LONG).show()
+      }
     })
 
     web.loadUrl(BuildConfig.APP_URL)
