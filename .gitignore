@@ -11,3 +11,9 @@ android/app/build/
 *.apk
 *.aab
 .DS_Store
+
+.worker-check/
+web/test-results/
+web/playwright-report/
+android/app/src/main/assets/web/
+android/build/

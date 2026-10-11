@@ -10,9 +10,12 @@ test("session authentication joins user to its own school",()=>{
   assert.match(worker,/JOIN schools sc ON sc.id=s.school_id/);
 });
 test("attendance reports cannot join other schools' rows",()=>{
-  assert.match(worker,/LEFT JOIN attendance_records ar ON ar.student_id=s.id AND ar.school_id=s.school_id/);
-  assert.match(worker,/LEFT JOIN attendance_sessions ss ON ss.id=ar.session_id AND ss.school_id=s.school_id/);
+  const reports=readFileSync(new URL("../src/reports.ts",import.meta.url),"utf8");
+  assert.match(reports,/sess.school_id=ar.school_id/);
+  assert.match(reports,/st.school_id=ar.school_id/);
+  assert.match(reports,/c.school_id=sess.school_id/);
 });
+
 test("attendance submission rejects duplicate student IDs",()=>{
   assert.match(worker,/new Set\(records.map\(/);
 });

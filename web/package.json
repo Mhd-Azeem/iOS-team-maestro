@@ -6,18 +6,20 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test": "tsc --noEmit"
+    "test": "tsc --noEmit",
+    "test:reports": "playwright test"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
+    "docx": "^9.5.1",
+    "jspdf": "4.2.1",
     "react": "latest",
     "react-dom": "latest",
-    "docx": "^9.5.1",
-    "jspdf": "^3.0.3"
+    "typescript": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/react": "latest",
     "@types/react-dom": "latest"
   }

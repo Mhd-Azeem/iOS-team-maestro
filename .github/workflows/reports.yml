@@ -1,0 +1,65 @@
+name: Reports upgrade verification
+on:
+  pull_request:
+    paths: ['web/**', 'backend/**', 'shared/**', 'tests/**', 'android/**', '.github/workflows/reports.yml']
+  push:
+    branches: ['codex/reports-system-upgrade']
+permissions:
+  contents: read
+jobs:
+  reports:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+        working-directory: web
+      - run: npm ci
+        working-directory: backend
+      - run: npm test && npm run build
+        working-directory: web
+      - run: npm run check
+        working-directory: backend
+      - run: node --test tests/*.test.mjs backend/tests/*.test.mjs
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npx playwright test
+        working-directory: web
+      - run: npx wrangler deploy --dry-run
+        working-directory: backend
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+      - run: npx wrangler d1 migrations apply maestro-school-attendance-db --local --persist-to .wrangler/reports-check
+        working-directory: backend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-browser-results
+          path: web/test-results
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci && npm run build
+        working-directory: web
+      - name: Bundle frontend
+        run: mkdir -p android/app/src/main/assets/web && cp -R web/dist/. android/app/src/main/assets/web/
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: gradle assembleDebug assembleRelease lintDebug testDebugUnitTest
+        working-directory: android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maestro-reports-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
