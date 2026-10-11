@@ -1,5 +1,6 @@
 package com.azeem.maestroattendance
 
+import androidx.core.content.ContextCompat
 import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
@@ -160,12 +161,7 @@ class UpdateManager(private val context: Context) {
     }
 
     val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-    } else {
-      @Suppress("DEPRECATION")
-      context.registerReceiver(receiver, filter)
-    }
+    ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
   }
 
   private fun isNewer(latest: String, current: String): Boolean {
