@@ -46,11 +46,9 @@ class MainActivity : AppCompatActivity() {
     @JavascriptInterface fun getBuildNumber(): Int = BuildConfig.VERSION_CODE
     @JavascriptInterface fun saveReportFile(fileName: String, mimeType: String, encodedData: String) {
       try {
-        if (fileName.length > 120 || !Regex("^[A-Za-z0-9._-]+\\.(pdf|docx)$", RegexOption.IGNORE_CASE).matches(fileName)) throw IllegalArgumentException("Invalid report filename")
-        if (mimeType !in listOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) throw IllegalArgumentException("Unsupported report format")
-        if (encodedData.isEmpty() || encodedData.length > 16 * 1024 * 1024) throw IllegalArgumentException("Report exceeds 12 MB limit")
+        if (encodedData.isEmpty() || encodedData.length > ReportFilePolicy.MAX_BASE64_CHARS) throw IllegalArgumentException("Report exceeds 12 MB limit")
         val bytes = Base64.decode(encodedData, Base64.DEFAULT)
-        if (bytes.isEmpty()) throw IllegalArgumentException("Report file is empty")
+        ReportFilePolicy.validate(fileName, mimeType, bytes.size)
         runOnUiThread {
           if (pendingReportFile != null) {
             Toast.makeText(this@MainActivity, "Finish saving the previous report first.", Toast.LENGTH_LONG).show()

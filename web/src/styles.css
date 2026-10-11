@@ -911,3 +911,5 @@ button:active{transform:translateY(1px);box-shadow:0 4px 12px rgba(10,143,99,.12
 @media(min-width:740px){.reportGenerator{max-width:900px;margin:auto;width:100%}.reportFilterCard{display:grid;grid-template-columns:1fr 1fr;column-gap:18px}.reportGenerateButton{grid-column:1/-1}}
 @media(max-width:520px){.reportGenerator .card{padding:17px}.reportIntro h2{font-size:23px}.reportFilterCard input,.reportFilterCard select{min-height:61px}.reportPreviewTable th,.reportPreviewTable td{padding:11px 7px}}
 .reportTotals{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px}.reportTotals span{display:flex;gap:8px}.reportPreviewMeta{overflow-wrap:anywhere}.reportPreviewTable td{overflow-wrap:anywhere;max-width:240px}
+
+.reportGenerator{font-family:Arial,"Noto Sans Sinhala","Noto Sans Tamil",sans-serif}

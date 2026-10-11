@@ -1,3 +1,5 @@
+import "@fontsource/noto-sans-sinhala/400.css";
+import "@fontsource/noto-sans-tamil/400.css";
 import {Document,HeadingLevel,Packer,Paragraph,Table,TableCell,TableRow,TextRun,WidthType} from 'docx';
 import {jsPDF} from 'jspdf';
 import {reportSections,reportTitles,summarizeAttendance,type AttendanceRecord,type ReportType} from '../../shared/reports';
@@ -30,6 +32,7 @@ export async function buildAttendanceFile(format:Format,start:string,end:string,
   }
   // Canvas uses the browser's Unicode shaping and fallback fonts, including Sinhala/Tamil.
   // Raster pages preserve complex scripts without jsPDF's Latin-only built-in fonts.
+  await Promise.all([document.fonts.load('23px "Noto Sans Sinhala"',"සිංහල"),document.fonts.load('23px "Noto Sans Tamil"',"தமிழ்")]);
   await document.fonts.ready;
   const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   const canvas=document.createElement('canvas');canvas.width=1240;canvas.height=1754;
